@@ -167,8 +167,10 @@ function baselineDone(m) {
   return CORE.every((ch) => state.baselines[`${m.id}:${ch}`]);
 }
 function renderChecklist() {
-  const overnight = state.merchants.filter((m) => m.overnight);
-  const all = state.merchants;
+  /* Disabled brands are hidden from capture but stay in state.merchants,
+     so Review (history) and Manage brands still see them. */
+  const all = state.merchants.filter((m) => !m.disabled);
+  const overnight = all.filter((m) => m.overnight);
   const doneCount = all.filter(merchantDone).length;
 
   $('prog-done').textContent = doneCount;
@@ -225,6 +227,33 @@ $('menu-overlay').onclick = (e) => { if (e.target === $('menu-overlay')) $('menu
 $('menu-logout').onclick = () => { $('menu-overlay').classList.add('hidden'); logout(); };
 $('menu-addbrand').onclick = () => { $('menu-overlay').classList.add('hidden'); openAddBrand(); };
 $('menu-review').onclick = () => { $('menu-overlay').classList.add('hidden'); openReview(); };
+$('menu-brands').onclick = () => { $('menu-overlay').classList.add('hidden'); openBrands(); };
+
+/* ---------- manage brands (disable / re-enable, never delete) ---------- */
+function openBrands() {
+  $('mb-sub').textContent = `${state.site.name} · ${state.site.id}`;
+  renderBrands();
+  show('view-brands');
+}
+$('btn-brands-back').onclick = () => { renderChecklist(); show('view-checklist'); };
+function renderBrands() {
+  const list = state.merchants;   // full roster incl. disabled, kitchen order
+  $('mb-list').innerHTML = list.length ? list.map((m) => `
+    <div class="merchant-card mb ${m.disabled ? 'off' : ''}">
+      <div class="m-kitchen">${esc(m.kitchen)}</div>
+      <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
+        <div class="m-tags">${m.disabled ? '<span class="tag off">DISABLED</span>' : '<span class="tag on">ACTIVE</span>'}${m.overnight ? '<span class="tag h24">24 HR</span>' : ''}</div></div>
+      <button class="mb-toggle ${m.disabled ? 'enable' : ''}" data-id="${esc(m.id)}">${m.disabled ? 'Enable' : 'Disable'}</button>
+    </div>`).join('') : '<p class="ab-note">No brands at this site yet.</p>';
+  $('mb-list').querySelectorAll('.mb-toggle').forEach((b) => b.onclick = () => {
+    const m = findMerchant(b.dataset.id);
+    /* production: PATCH /api/merchants → ticks/unticks Disabled (col J) in SFDC ID Map */
+    const src = DATA.merchants.find((x) => x.site === m.site && x.kitchen === m.kitchen && x.brand === m.brand);
+    m.disabled = src.disabled = !m.disabled ? true : undefined;
+    toast(m.disabled ? `${m.brand} disabled — hidden from new capture, history kept` : `${m.brand} re-enabled ✓`);
+    renderBrands();
+  });
+}
 
 /* ---------- review previous days ---------- */
 const rv = { offset: 0 };

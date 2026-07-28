@@ -72,6 +72,7 @@
   <div class="menu-sheet">
     <button class="menu-item" id="menu-review">🗓️ <span>Review previous days</span></button>
     <button class="menu-item" id="menu-addbrand">➕ <span>Add new brand</span></button>
+    <button class="menu-item" id="menu-brands">🏷️ <span>Manage brands</span></button>
     <button class="menu-item" id="menu-logout">⏻ <span>Log out</span></button>
     <button class="menu-cancel" id="menu-cancel">Cancel</button>
   </div>
@@ -90,6 +91,22 @@
   <div class="capture-body">
     <div class="chip-row" id="rv-dates" style="overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px"></div>
     <div class="merchant-list" id="rv-list" style="margin:16px 0 0"></div>
+  </div>
+</div>
+
+<!-- ============ MANAGE BRANDS VIEW ============ -->
+<div class="view hidden" id="view-brands">
+  <header class="app-header">
+    <button class="icon-btn" id="btn-brands-back">‹</button>
+    <div class="header-center">
+      <div class="header-site">Manage brands</div>
+      <div class="header-meta" id="mb-sub"></div>
+    </div>
+    <span class="header-spacer"></span>
+  </header>
+  <div class="capture-body">
+    <p class="ab-note" style="margin-bottom:12px">Disabling a brand hides it from new GMV capture. Its history stays in Review, and you can re-enable it anytime. This ticks the Disabled column in SFDC ID Map.</p>
+    <div class="merchant-list" id="mb-list" style="margin:0"></div>
   </div>
 </div>
 
