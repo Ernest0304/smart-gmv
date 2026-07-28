@@ -3,5 +3,5 @@
    (simulated readings). Set after the backend service is deployed, e.g.
    'https://smart-gmv-server-production.up.railway.app' */
 const CONFIG = {
-  apiBase: '',
+  apiBase: 'https://smart-gmv-server-production.up.railway.app',
 };
