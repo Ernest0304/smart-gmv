@@ -72,10 +72,29 @@ fileInput.onchange = () => {
   fileInput.value = '';
   if (!file || !ch) return;
   const reader = new FileReader();
-  reader.onload = () => runExtraction(ch, reader.result);
+  reader.onload = () => downscale(reader.result).then((jpeg) => runExtraction(ch, jpeg));
   reader.readAsDataURL(file);
 };
 function openPicker(ch) { pendingChannel = ch; fileInput.click(); }
+
+/* Re-encode to JPEG ≤1600px long edge: fixes iPhone HEIC uploads and cuts
+   upload size + AI token cost without losing digit legibility. */
+function downscale(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1600;
+      const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
 
 /* ---------- generic helpers ---------- */
 const money = (v) => '$' + Number(v).toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -465,22 +484,63 @@ function wireChannel(card, ch) {
   if (img) img.onclick = () => openViewer(ch);
 }
 
-/* Photo picked → mock AI extraction (deterministic per photo). */
+/* Photo picked → AI extraction. With CONFIG.apiBase set this calls the real
+   Claude engine; on ANY backend failure the fields stay manual — a billing tool
+   must never silently fill in made-up numbers. Without apiBase: demo mock. */
 function runExtraction(ch, photoUrl) {
   const { m, mode } = state.current;
   const card = document.getElementById(`card-${ch}`);
   const body = card.querySelector('.ch-body');
   body.innerHTML = `<div class="scanning"><div class="spinner"></div> Reading screen…</div>`;
-  setTimeout(() => {
-    const ai = mockExtract(ch, mode === 'baseline' ? 'baseline' : 'closing', m, photoUrl);
+
+  const finish = (ai) => {
     const prev = channelValue(ch) || {};
     const val = { ...prev, ...ai, photoUrl, aiOrders: ai.orders, aiGmv: ai.gmv,
       finalOrders: ai.orders, finalGmv: ai.gmv, editedOrders: false, editedGmv: false };
     setChannelValue(ch, val);
-    if (mode === 'baseline') toast(`${CH_META[ch].name} baseline — ${ai.orders} orders · ${money(ai.gmv)}`);
+    if (mode === 'baseline' && ai.orders !== undefined) {
+      toast(`${CH_META[ch].name} baseline — ${ai.orders} orders · ${money(ai.gmv)}`);
+    }
     renderChannelCards();
     updateSaveBtn();
-  }, 1000);
+  };
+  const fail = (msg) => {
+    const prev = channelValue(ch) || {};
+    setChannelValue(ch, { ...prev, photoUrl, conf: 'low',
+      screen: '', mismatch: `${msg} — type the numbers manually, the photo is kept as evidence.` });
+    renderChannelCards();
+    updateSaveBtn();
+  };
+
+  if (!CONFIG.apiBase) {
+    setTimeout(() => finish(mockExtract(ch, mode === 'baseline' ? 'baseline' : 'closing', m, photoUrl)), 1000);
+    return;
+  }
+
+  fetch(`${CONFIG.apiBase}/api/extract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: photoUrl, channel: ch,
+      mode: mode === 'baseline' ? 'baseline' : 'closing',
+      brand: m.brand, aigens: !!m.aigens }),
+  })
+    .then(async (r) => {
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      return r.json();
+    })
+    .then((d) => {
+      const notes = [];
+      if (d.wrong_channel) notes.push(`⚠ This looks like a ${d.platform} screen, not ${CH_META[ch].name} — check the photo`);
+      if (d.confidence !== 'high' && d.notes) notes.push(d.notes);
+      finish({
+        orders: d.orders ?? undefined, gmv: d.gmv ?? undefined,
+        conf: d.confidence, screen: d.screen_summary,
+        mismatch: notes.join(' · ') || undefined,
+        candidates: (d.candidates || []).map((c) => ({ label: c.label, value: c.value, kind: c.kind, box: c.box })),
+        zero: d.zero_sales,
+      });
+    })
+    .catch((e) => fail(`AI reading failed (${e.message})`));
 }
 
 /* ---------- photo viewer: tap-to-correct ---------- */
@@ -489,27 +549,54 @@ function runExtraction(ch, photoUrl) {
 function openViewer(ch) {
   const val = channelValue(ch);
   if (!val || !val.photoUrl) return;
-  state.viewer = { ch };
-  $('viewer-img').src = val.photoUrl;
-  const cands = val.candidates || [
+  state.viewer = { ch, cands: (val.candidates || [
     { label: 'Sales', value: val.aiGmv, kind: 'gmv' },
     { label: 'Orders', value: val.aiOrders, kind: 'orders' },
-  ];
-  const POS = [[12, 18], [55, 30], [18, 46], [58, 60], [25, 72]];
-  $('viewer-boxes').innerHTML = cands.slice(0, 5).map((c, i) =>
-    `<button class="vbox" style="left:${POS[i][0]}%;top:${POS[i][1]}%" data-i="${i}">
-      <small>${esc(c.label)}</small>${c.kind === 'gmv' ? money(c.value) : esc(String(c.value))}</button>`).join('');
+  ]).filter((c) => c.value !== undefined && c.value !== null).slice(0, 8) };
+  const img = $('viewer-img');
+  img.onload = placeViewerBoxes;
+  img.src = val.photoUrl;
+  $('viewer-choice').classList.add('hidden');
+  $('viewer-overlay').classList.remove('hidden');
+  if (img.complete) placeViewerBoxes();
+}
+
+/* Position candidate boxes. Real backend candidates carry a bbox in % of the
+   image; the image sits letterboxed (object-fit: contain) inside the stage, so
+   convert image-% → stage pixels. Candidates without a box get preset spots. */
+function placeViewerBoxes() {
+  const img = $('viewer-img');
+  const stage = $('viewer-stage');
+  const cands = (state.viewer && state.viewer.cands) || [];
+  const sw = stage.clientWidth, sh = stage.clientHeight;
+  const scale = Math.min(sw / img.naturalWidth, sh / img.naturalHeight) || 1;
+  const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
+  const ox = (sw - dw) / 2, oy = (sh - dh) / 2;
+  const PRESET = [[12, 18], [55, 30], [18, 46], [58, 60], [25, 72], [60, 80], [15, 86], [55, 12]];
+  $('viewer-boxes').innerHTML = cands.map((c, i) => {
+    let style;
+    if (c.box) {
+      const left = ox + (c.box.x / 100) * dw;
+      const top = oy + (c.box.y / 100) * dh;
+      style = `left:${left.toFixed(0)}px;top:${top.toFixed(0)}px`;
+    } else {
+      style = `left:${PRESET[i % PRESET.length][0]}%;top:${PRESET[i % PRESET.length][1]}%`;
+    }
+    return `<button class="vbox" style="${style}" data-i="${i}">
+      <small>${esc(c.label)}</small>${c.kind === 'gmv' ? money(c.value) : esc(String(c.value))}</button>`;
+  }).join('');
   $('viewer-boxes').querySelectorAll('.vbox').forEach((b) => b.onclick = () => {
-    const c = cands[+b.dataset.i];
+    const c = state.viewer.cands[+b.dataset.i];
     state.viewer.candidate = c;
     $('vc-value').textContent = `${c.label}: ${c.kind === 'gmv' ? money(c.value) : c.value}`;
     $('viewer-choice').classList.remove('hidden');
   });
-  $('viewer-choice').classList.add('hidden');
-  $('viewer-overlay').classList.remove('hidden');
 }
+window.addEventListener('resize', () => {
+  if (!$('viewer-overlay').classList.contains('hidden')) placeViewerBoxes();
+});
 function applyCandidate(kind) {
-  const { ch, candidate } = state.viewer;
+  const { ch, candidate } = state.viewer || {};
   if (!candidate) return;
   const val = channelValue(ch);
   if (kind === 'orders') { val.finalOrders = Math.round(candidate.value); val.editedOrders = true; }
@@ -649,6 +736,12 @@ $('ab-create').onclick = () => {
 };
 
 /* ---------- boot ---------- */
+if (CONFIG.apiBase) {
+  const b = $('mode-badge');
+  b.textContent = 'LIVE AI · readings by Claude — always double-check against the device screen';
+  b.style.background = 'var(--green-bg)';
+  b.style.color = 'var(--green)';
+}
 renderSites();
 renderPinPad();
 show('view-login');
