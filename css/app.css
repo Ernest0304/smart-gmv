@@ -193,6 +193,7 @@ body {
 
 .scanning { display: flex; align-items: center; gap: 10px; height: 92px; justify-content: center; color: var(--ink-2); font-weight: 700; font-size: 14px; }
 .spinner { width: 20px; height: 20px; border: 3px solid var(--line); border-top-color: var(--red); border-radius: 50%; animation: spin .8s linear infinite; }
+.spinner.sm { display: inline-block; width: 12px; height: 12px; border-width: 2px; vertical-align: -2px; margin-right: 4px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .mismatch { border: 1.5px solid var(--amber); background: var(--amber-bg); border-radius: 12px; padding: 10px 12px; margin-top: 10px; font-size: 13px; color: var(--amber); font-weight: 600; }

@@ -184,7 +184,13 @@ function merchantDone(m) {
   return true;
 }
 function baselineDone(m) {
-  return CORE.every((ch) => state.baselines[`${m.id}:${ch}`]);
+  return CORE.every((ch) => {
+    const b = state.baselines[`${m.id}:${ch}`];
+    return b && !b.pendingAI;
+  });
+}
+function baselineReading(m) {
+  return CORE.some((ch) => state.baselines[`${m.id}:${ch}`]?.pendingAI);
 }
 function renderChecklist() {
   /* Disabled brands are hidden from capture but stay in state.merchants,
@@ -205,11 +211,13 @@ function renderChecklist() {
   $('sec-morning-label').classList.toggle('hidden', overnight.length === 0);
   $('list-morning').innerHTML = overnight.map((m) => {
     const hasBase = baselineDone(m);
+    const reading = baselineReading(m);
+    const label = hasBase ? '✓ baseline saved' : reading ? '⏳ AI reading…' : '⚠ shoot baseline';
     return `<div class="merchant-card" data-id="${esc(m.id)}" data-mode="baseline">
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
         <div class="m-tags"><span class="tag h24">24 HR</span></div></div>
-      <div class="m-status ${hasBase ? 'done' : 'flag'}">${hasBase ? '✓ baseline saved' : '⚠ shoot baseline'}</div>
+      <div class="m-status ${hasBase ? 'done' : reading ? 'pending' : 'flag'}">${label}</div>
     </div>`;
   }).join('');
 
@@ -222,6 +230,10 @@ function renderChecklist() {
       status = `<div style="text-align:right"><div class="m-status done">✓ saved</div><div class="m-total">${money(tot)}</div></div>`;
     } else if (done) {
       status = `<span class="m-status done">✓ ${esc(r.status)}</span>`;
+    } else if (r && r.draft) {
+      status = (r.pending || 0) > 0
+        ? '<span class="m-status pending">⏳ AI reading…</span>'
+        : '<span class="m-status flag">🟡 confirm readings</span>';
     }
     const tags = [
       m.overnight ? '<span class="tag h24">24 HR</span>' : '',
@@ -447,6 +459,7 @@ function channelBodyHTML(ch, val, base, mode) {
   const aiChannel = AI_CHANNELS.includes(ch);
   const statusLine = !aiChannel
     ? '<span class="screen-note">📎 Evidence photo attached — numbers entered manually</span>'
+    : val.pendingAI ? '<span class="screen-note"><span class="spinner sm"></span> AI reading in background — you can move on and confirm later</span>'
     : val.conf === 'high' ? '<span class="ok">✓ AI read · high confidence</span>'
     : '<span class="warn">⚠ AI read · please double-check</span>';
   const photo = val.photoUrl
@@ -492,48 +505,63 @@ function wireChannel(card, ch) {
   if (img) img.onclick = () => openViewer(ch);
 }
 
-/* Photo picked → AI extraction. With CONFIG.apiBase set this calls the real
-   Claude engine; on ANY backend failure the fields stay manual — a billing tool
-   must never silently fill in made-up numbers. Without apiBase: demo mock. */
-function runExtraction(ch, photoUrl) {
-  const { m, mode } = state.current;
+/* ---------- async extraction ("snap & go") ----------
+   Staff never wait for the AI: the photo attaches instantly, the read runs in
+   the background, and results land on the right merchant even if the user has
+   moved on. Context is FROZEN at call time — resolving into state.current
+   would write numbers onto whichever kitchen happens to be open. On backend
+   failure the fields stay manual: a billing tool never invents numbers. */
+function readVal(ctx, ch) {
+  return ctx.mode === 'baseline' ? state.baselines[`${ctx.m.id}:${ch}`]
+    : recordsFor(ctx.offset)[ctx.m.id].channels[ch];
+}
+function writeVal(ctx, ch, val) {
+  if (ctx.mode === 'baseline') state.baselines[`${ctx.m.id}:${ch}`] = val;
+  else recordsFor(ctx.offset)[ctx.m.id].channels[ch] = val;
+}
+function viewingCtx(ctx) {
+  return state.current && state.current.m.id === ctx.m.id
+    && state.current.mode === ctx.mode && state.current.offset === ctx.offset
+    && !$('view-capture').classList.contains('hidden');
+}
 
-  // Non-AI channels (Others / Catering / Dine-in): photo attaches as evidence
-  // only — no engine call, numbers stay manual. Cost-control decision 29 Jul.
+function runExtraction(ch, photoUrl) {
+  const ctx = { ...state.current };
+
+  // Non-AI channels: photo = evidence only, numbers stay manual.
   if (!AI_CHANNELS.includes(ch)) {
-    const prev = channelValue(ch) || {};
-    setChannelValue(ch, { ...prev, photoUrl, conf: prev.conf,
+    const prev = readVal(ctx, ch) || {};
+    writeVal(ctx, ch, { ...prev, photoUrl,
       screen: 'Photo saved as evidence — enter the numbers manually for this channel.' });
     renderChannelCards();
     updateSaveBtn();
     return;
   }
 
-  const card = document.getElementById(`card-${ch}`);
-  const body = card.querySelector('.ch-body');
-  body.innerHTML = `<div class="scanning"><div class="spinner"></div> Reading screen…</div>`;
+  const rec = ctx.mode === 'baseline' ? null : recordsFor(ctx.offset)[ctx.m.id];
+  if (rec) rec.pending = (rec.pending || 0) + 1;
+  writeVal(ctx, ch, { ...(readVal(ctx, ch) || {}), photoUrl, pendingAI: true });
+  if (viewingCtx(ctx)) { renderChannelCards(); updateSaveBtn(); }
 
-  const finish = (ai) => {
-    const prev = channelValue(ch) || {};
-    const val = { ...prev, ...ai, photoUrl, aiOrders: ai.orders, aiGmv: ai.gmv,
-      finalOrders: ai.orders, finalGmv: ai.gmv, editedOrders: false, editedGmv: false };
-    setChannelValue(ch, val);
-    if (mode === 'baseline' && ai.orders !== undefined) {
-      toast(`${CH_META[ch].name} baseline — ${ai.orders} orders · ${money(ai.gmv)}`);
-    }
-    renderChannelCards();
-    updateSaveBtn();
-  };
-  const fail = (msg) => {
-    const prev = channelValue(ch) || {};
-    setChannelValue(ch, { ...prev, photoUrl, conf: 'low',
-      screen: '', mismatch: `${msg} — type the numbers manually, the photo is kept as evidence.` });
-    renderChannelCards();
-    updateSaveBtn();
+  const settle = (patch) => {
+    const prev = readVal(ctx, ch) || {};
+    const val = { ...prev, ...patch, photoUrl, pendingAI: false };
+    // Respect anything the staff member typed while the read was in flight.
+    if (prev.editedOrders) val.finalOrders = prev.finalOrders;
+    else { val.finalOrders = patch.orders; val.editedOrders = false; }
+    if (prev.editedGmv) val.finalGmv = prev.finalGmv;
+    else { val.finalGmv = patch.gmv; val.editedGmv = false; }
+    val.aiOrders = patch.orders; val.aiGmv = patch.gmv;
+    writeVal(ctx, ch, val);
+    if (rec) rec.pending = Math.max(0, (rec.pending || 1) - 1);
+    if (viewingCtx(ctx)) { renderChannelCards(); updateSaveBtn(); }
+    else if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
+    if (rec && rec.draft && !rec.pending) toast(`${ctx.m.brand} readings ready — tap to confirm 🟡`);
+    if (ctx.mode === 'baseline' && !viewingCtx(ctx) && !$('view-checklist').classList.contains('hidden')) renderChecklist();
   };
 
   if (!CONFIG.apiBase) {
-    setTimeout(() => finish(mockExtract(ch, mode === 'baseline' ? 'baseline' : 'closing', m, photoUrl)), 1000);
+    setTimeout(() => settle(mockExtract(ch, ctx.mode === 'baseline' ? 'baseline' : 'closing', ctx.m, photoUrl)), 1000);
     return;
   }
 
@@ -541,8 +569,8 @@ function runExtraction(ch, photoUrl) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image: photoUrl, channel: ch,
-      mode: mode === 'baseline' ? 'baseline' : 'closing',
-      brand: m.brand, aigens: !!m.aigens }),
+      mode: ctx.mode === 'baseline' ? 'baseline' : 'closing',
+      brand: ctx.m.brand, aigens: !!ctx.m.aigens }),
   })
     .then(async (r) => {
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
@@ -552,15 +580,15 @@ function runExtraction(ch, photoUrl) {
       const notes = [];
       if (d.wrong_channel) notes.push(`⚠ This looks like a ${d.platform} screen, not ${CH_META[ch].name} — check the photo`);
       if (d.confidence !== 'high' && d.notes) notes.push(d.notes);
-      finish({
+      settle({
         orders: d.orders ?? undefined, gmv: d.gmv ?? undefined,
         conf: d.confidence, screen: d.screen_summary,
         mismatch: notes.join(' · ') || undefined,
-        candidates: (d.candidates || []).map((c) => ({ label: c.label, value: c.value, kind: c.kind, box: c.box })),
         zero: d.zero_sales,
       });
     })
-    .catch((e) => fail(`AI reading failed (${e.message})`));
+    .catch((e) => settle({ orders: undefined, gmv: undefined, conf: 'low', screen: '',
+      mismatch: `AI reading failed (${e.message}) — type the numbers manually, the photo is kept as evidence.` }));
 }
 
 /* ---------- photo viewer: tap-to-correct ---------- */
@@ -696,28 +724,50 @@ function missingPhotos() {
   const rec = curRec();
   return CORE.filter((ch) => rec.channels[ch] && !rec.channels[ch].photoUrl);
 }
+function photosCaptured() {
+  /* All CORE screens photographed (reads may still be in flight). */
+  const rec = curRec();
+  return rec.status === 'Operated' && CORE.every((ch) => rec.channels[ch]?.photoUrl);
+}
 function updateSaveBtn() {
   const { m, mode, offset } = state.current;
   const btn = $('btn-save');
   if (mode === 'baseline') {
     const done = baselineDone(m);
-    btn.disabled = !done;
-    btn.textContent = done ? 'Done — back to list' : 'Shoot all screens to finish';
+    const shooting = baselineReading(m);
+    btn.disabled = !done && !shooting;
+    btn.textContent = done ? 'Done — back to list'
+      : shooting ? 'Reading in background — next kitchen ➜'
+      : 'Shoot all screens to finish';
     return;
   }
   const rec = curRec();
-  btn.disabled = !coreReady();
-  btn.textContent = offset ? `Save changes for ${dayLabel(offset)}`
-    : rec.status === 'Operated' ? 'Confirm & save' : `Save as “${rec.status}”`;
+  if (coreReady()) {
+    btn.disabled = false;
+    btn.textContent = offset ? `Save changes for ${dayLabel(offset)}`
+      : rec.status === 'Operated' ? 'Confirm & save' : `Save as “${rec.status}”`;
+  } else if (!offset && photosCaptured()) {
+    btn.disabled = false;
+    btn.textContent = 'Photos captured — next kitchen ➜';
+  } else {
+    btn.disabled = true;
+    btn.textContent = rec.status === 'Operated' ? 'Confirm & save' : `Save as “${rec.status}”`;
+  }
 }
 $('btn-save').onclick = () => {
   const { m, mode, offset, from } = state.current;
   if (mode === 'baseline') {
-    toast(`${m.brand} baseline done ✓`);
+    toast(baselineDone(m) ? `${m.brand} baseline done ✓` : `${m.brand} baseline reading in background ⏳`);
+  } else if (!coreReady() && photosCaptured()) {
+    // Snap & go: photos in, reads still running — park as draft and move on.
+    const rec = curRec();
+    rec.draft = true;
+    toast(`${m.brand} parked ⏳ — confirm when readings are ready`);
   } else {
     const rec = curRec();
     const noPhoto = rec.status === 'Operated' ? missingPhotos() : [];
     rec.saved = true;
+    rec.draft = false;
     if (offset) {
       /* production: writes back to the GMV Raw Data row with an audit trail */
       rec.amendedBy = state.staff.name;
