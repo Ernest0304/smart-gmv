@@ -171,21 +171,22 @@
   </div>
 </div>
 
-<!-- ============ PHOTO VIEWER (tap-to-correct) ============ -->
+<!-- ============ PHOTO VIEWER (mark-it-yourself correction) ============ -->
 <div class="overlay hidden" id="viewer-overlay">
   <div class="viewer-top">
-    <span>Tap the correct number on the photo</span>
+    <span>Draw a box around the correct number</span>
     <button class="viewer-close" id="viewer-close">✕</button>
   </div>
   <div class="viewer-stage" id="viewer-stage">
-    <img id="viewer-img" alt="evidence photo">
+    <img id="viewer-img" alt="evidence photo" draggable="false">
     <div id="viewer-boxes"></div>
+    <div id="rubber-band" class="rubber-band hidden"></div>
   </div>
-  <div class="viewer-hint" id="viewer-hint">DEMO — highlight positions &amp; values are simulated here. In the real version, boxes sit exactly on the numbers detected in your photo. Tap one to use it.</div>
+  <div class="viewer-hint" id="viewer-hint">Drag on the photo to box the correct number, then type it in. Your marks teach the AI over time.</div>
   <div class="viewer-choice hidden" id="viewer-choice">
-    <div class="vc-value" id="vc-value">$0.00</div>
-    <button class="vc-btn" id="vc-orders">Use as Orders</button>
-    <button class="vc-btn" id="vc-gmv">Use as Sales</button>
+    <input class="search-input vc-input" id="vc-input" inputmode="decimal" placeholder="Type the number you boxed…">
+    <button class="vc-btn" id="vc-orders">Save as Orders</button>
+    <button class="vc-btn" id="vc-gmv">Save as Sales (S$)</button>
     <button class="vc-btn vc-cancel" id="vc-cancel">Cancel</button>
   </div>
 </div>

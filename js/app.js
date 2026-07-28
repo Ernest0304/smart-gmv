@@ -58,6 +58,7 @@ function channelsFor(m, siteId) {
 }
 const CORE = ['grab', 'fp'];                      // always expanded, required
 const OPTIONAL = ['others', 'catering', 'dinein']; // collapsed, default 0
+const AI_CHANNELS = ['grab', 'fp'];               // only these call the AI engine (cost control)
 
 /* ---------- native camera / photo picker ---------- */
 const fileInput = document.createElement('input');
@@ -443,16 +444,23 @@ function channelBodyHTML(ch, val, base, mode) {
       <div class="rf ${val.editedOrders ? 'edited' : ''}"><label>Orders</label><input inputmode="numeric" placeholder="0" value="${o !== undefined ? Number(o) : ''}" data-f="orders"></div>
       <div class="rf ${val.editedGmv ? 'edited' : ''}"><label>Sales (S$)</label><input inputmode="decimal" placeholder="0.00" value="${g !== undefined ? Number(g).toFixed(2) : ''}" data-f="gmv"></div>
     </div>`;
+  const aiChannel = AI_CHANNELS.includes(ch);
+  const statusLine = !aiChannel
+    ? '<span class="screen-note">📎 Evidence photo attached — numbers entered manually</span>'
+    : val.conf === 'high' ? '<span class="ok">✓ AI read · high confidence</span>'
+    : '<span class="warn">⚠ AI read · please double-check</span>';
   const photo = val.photoUrl
-    ? `<div class="photo-row"><img class="thumb tap" src="${val.photoUrl}" alt="evidence" title="Tap to pick numbers from the photo">
+    ? `<div class="photo-row"><img class="thumb tap" src="${val.photoUrl}" alt="evidence" title="Tap to mark the correct number on the photo">
         <div class="ai-note-col">
-          ${val.conf === 'high' ? '<span class="ok">✓ AI read · high confidence</span>' : '<span class="warn">⚠ AI read · please double-check</span>'}
-          <span class="screen-note">${esc(val.screen || '')}</span>
-          <span class="tap-hint">👆 Tap photo to pick a different number</span>
+          ${statusLine}
+          ${aiChannel ? `<span class="screen-note">${esc(val.screen || '')}</span>` : ''}
+          <span class="tap-hint">👆 Tap photo to mark the correct number</span>
         </div>
         <button class="retake">Retake</button></div>`
     : `<div class="photo-slot"><span class="cam">📷</span> Snap or upload ${esc(CH_META[ch].name)} screen</div>
-       <div class="no-photo-note">You can type the numbers first — but a photo is required as evidence before saving.</div>`;
+       <div class="no-photo-note">${aiChannel
+         ? 'You can type the numbers first — but a photo is required as evidence before saving.'
+         : 'This channel is manual — type the numbers, and attach a photo as evidence.'}</div>`;
   let extra = '';
   if (mode === 'baseline' && channelHasData(val)) {
     extra = `<div class="deduct-box">☀️ Stored as today's baseline — deducted tonight. Not billed.</div>`;
@@ -489,6 +497,18 @@ function wireChannel(card, ch) {
    must never silently fill in made-up numbers. Without apiBase: demo mock. */
 function runExtraction(ch, photoUrl) {
   const { m, mode } = state.current;
+
+  // Non-AI channels (Others / Catering / Dine-in): photo attaches as evidence
+  // only — no engine call, numbers stay manual. Cost-control decision 29 Jul.
+  if (!AI_CHANNELS.includes(ch)) {
+    const prev = channelValue(ch) || {};
+    setChannelValue(ch, { ...prev, photoUrl, conf: prev.conf,
+      screen: 'Photo saved as evidence — enter the numbers manually for this channel.' });
+    renderChannelCards();
+    updateSaveBtn();
+    return;
+  }
+
   const card = document.getElementById(`card-${ch}`);
   const body = card.querySelector('.ch-body');
   body.innerHTML = `<div class="scanning"><div class="spinner"></div> Reading screen…</div>`;
@@ -549,10 +569,7 @@ function runExtraction(ch, photoUrl) {
 function openViewer(ch) {
   const val = channelValue(ch);
   if (!val || !val.photoUrl) return;
-  state.viewer = { ch, cands: (val.candidates || [
-    { label: 'Sales', value: val.aiGmv, kind: 'gmv' },
-    { label: 'Orders', value: val.aiOrders, kind: 'orders' },
-  ]).filter((c) => c.value !== undefined && c.value !== null).slice(0, 8) };
+  state.viewer = { ch, pendingBox: null };
   const img = $('viewer-img');
   img.onload = placeViewerBoxes;
   img.src = val.photoUrl;
@@ -561,58 +578,108 @@ function openViewer(ch) {
   if (img.complete) placeViewerBoxes();
 }
 
-/* Position candidate boxes. Real backend candidates carry a bbox in % of the
-   image; the image sits letterboxed (object-fit: contain) inside the stage, so
-   convert image-% → stage pixels. Candidates without a box get preset spots. */
-function placeViewerBoxes() {
+/* Geometry of the letterboxed image (object-fit: contain) inside the stage. */
+function imageRect() {
   const img = $('viewer-img');
   const stage = $('viewer-stage');
-  const cands = (state.viewer && state.viewer.cands) || [];
   const sw = stage.clientWidth, sh = stage.clientHeight;
   const scale = Math.min(sw / img.naturalWidth, sh / img.naturalHeight) || 1;
   const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
-  const ox = (sw - dw) / 2, oy = (sh - dh) / 2;
-  const PRESET = [[12, 18], [55, 30], [18, 46], [58, 60], [25, 72], [60, 80], [15, 86], [55, 12]];
-  $('viewer-boxes').innerHTML = cands.map((c, i) => {
-    let style;
-    if (c.box) {
-      const left = ox + (c.box.x / 100) * dw;
-      const top = oy + (c.box.y / 100) * dh;
-      style = `left:${left.toFixed(0)}px;top:${top.toFixed(0)}px`;
-    } else {
-      style = `left:${PRESET[i % PRESET.length][0]}%;top:${PRESET[i % PRESET.length][1]}%`;
-    }
-    return `<button class="vbox" style="${style}" data-i="${i}">
-      <small>${esc(c.label)}</small>${c.kind === 'gmv' ? money(c.value) : esc(String(c.value))}</button>`;
-  }).join('');
-  $('viewer-boxes').querySelectorAll('.vbox').forEach((b) => b.onclick = () => {
-    const c = state.viewer.cands[+b.dataset.i];
-    state.viewer.candidate = c;
-    $('vc-value').textContent = `${c.label}: ${c.kind === 'gmv' ? money(c.value) : c.value}`;
-    $('viewer-choice').classList.remove('hidden');
-  });
+  return { ox: (sw - dw) / 2, oy: (sh - dh) / 2, dw, dh };
+}
+
+/* Show the marks the staff member has drawn on this photo (stored in image-%). */
+function placeViewerBoxes() {
+  const val = channelValue(state.viewer.ch) || {};
+  const { ox, oy, dw, dh } = imageRect();
+  $('viewer-boxes').innerHTML = (val.marks || []).map((mk) =>
+    `<div class="vbox mark" style="left:${(ox + mk.box.x / 100 * dw).toFixed(0)}px;top:${(oy + mk.box.y / 100 * dh).toFixed(0)}px;width:${(mk.box.w / 100 * dw).toFixed(0)}px;height:${(mk.box.h / 100 * dh).toFixed(0)}px">
+      <small>${mk.kind === 'gmv' ? 'SALES' : 'ORDERS'}</small>${mk.kind === 'gmv' ? money(mk.value) : esc(String(mk.value))}</div>`).join('');
 }
 window.addEventListener('resize', () => {
   if (!$('viewer-overlay').classList.contains('hidden')) placeViewerBoxes();
 });
-function applyCandidate(kind) {
-  const { ch, candidate } = state.viewer || {};
-  if (!candidate) return;
+
+/* Drag-to-mark: staff box the correct number themselves, then type it.
+   Marks (box in image-% + value + field) are stored in the corrections log —
+   this is the ground-truth data the AI learns from over time. */
+(() => {
+  const stage = $('viewer-stage');
+  const band = $('rubber-band');
+  let start = null;
+  stage.addEventListener('pointerdown', (e) => {
+    if ($('viewer-overlay').classList.contains('hidden')) return;
+    if (!$('viewer-choice').classList.contains('hidden')) return;
+    const r = stage.getBoundingClientRect();
+    start = { x: e.clientX - r.left, y: e.clientY - r.top };
+    band.style.left = `${start.x}px`;
+    band.style.top = `${start.y}px`;
+    band.style.width = '0px';
+    band.style.height = '0px';
+    band.classList.remove('hidden');
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    const r = stage.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    band.style.left = `${Math.min(start.x, x)}px`;
+    band.style.top = `${Math.min(start.y, y)}px`;
+    band.style.width = `${Math.abs(x - start.x)}px`;
+    band.style.height = `${Math.abs(y - start.y)}px`;
+  });
+  stage.addEventListener('pointerup', (e) => {
+    if (!start) return;
+    const r = stage.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    const box = { left: Math.min(start.x, x), top: Math.min(start.y, y),
+                  w: Math.abs(x - start.x), h: Math.abs(y - start.y) };
+    start = null;
+    if (box.w < 14 || box.h < 10) { band.classList.add('hidden'); return; }
+    const { ox, oy, dw, dh } = imageRect();
+    state.viewer.pendingBox = {
+      x: Math.max(0, (box.left - ox) / dw * 100),
+      y: Math.max(0, (box.top - oy) / dh * 100),
+      w: Math.min(100, box.w / dw * 100),
+      h: Math.min(100, box.h / dh * 100),
+    };
+    $('vc-input').value = '';
+    $('viewer-choice').classList.remove('hidden');
+    setTimeout(() => $('vc-input').focus(), 50);
+  });
+})();
+function applyMark(kind) {
+  const { ch, pendingBox } = state.viewer || {};
+  const raw = $('vc-input').value.trim().replace(/[^0-9.]/g, '');
+  const value = Number(raw);
+  if (!pendingBox || raw === '' || Number.isNaN(value)) { $('vc-input').focus(); return; }
   const val = channelValue(ch);
-  if (kind === 'orders') { val.finalOrders = Math.round(candidate.value); val.editedOrders = true; }
-  else { val.finalGmv = candidate.value; val.editedGmv = true; }
+  if (kind === 'orders') { val.finalOrders = Math.round(value); val.editedOrders = true; }
+  else { val.finalGmv = value; val.editedGmv = true; }
   val.edited = true;
-  (val.corrections = val.corrections || []).push({ picked: candidate.label, value: candidate.value, as: kind });
-  closeViewer();
+  (val.marks = val.marks || []).push({ box: pendingBox, value, kind });
+  (val.corrections = val.corrections || []).push({ type: 'manual_mark', box: pendingBox, value, as: kind });
+  state.viewer.pendingBox = null;
+  $('rubber-band').classList.add('hidden');
+  $('viewer-choice').classList.add('hidden');
+  placeViewerBoxes();
   renderChannelCards();
   updateSaveBtn();
-  toast('Updated from photo ✓ — AI will learn from this');
+  toast('Marked ✓ — value updated, AI will learn from this');
 }
-$('vc-orders').onclick = () => applyCandidate('orders');
-$('vc-gmv').onclick = () => applyCandidate('gmv');
-$('vc-cancel').onclick = () => $('viewer-choice').classList.add('hidden');
+$('vc-orders').onclick = () => applyMark('orders');
+$('vc-gmv').onclick = () => applyMark('gmv');
+$('vc-cancel').onclick = () => {
+  state.viewer.pendingBox = null;
+  $('rubber-band').classList.add('hidden');
+  $('viewer-choice').classList.add('hidden');
+};
 $('viewer-close').onclick = closeViewer;
-function closeViewer() { $('viewer-overlay').classList.add('hidden'); state.viewer = null; }
+function closeViewer() {
+  $('rubber-band').classList.add('hidden');
+  $('viewer-overlay').classList.add('hidden');
+  state.viewer = null;
+}
 
 /* ---------- save ---------- */
 function coreReady() {
