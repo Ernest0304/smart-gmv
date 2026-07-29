@@ -5,10 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#B01E2E">
 <title>Smart GMV</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Smart GMV">
 <!-- ?v= pairs the HTML with matching assets — bump it on EVERY deploy, or a
      browser holding a cached copy mixes old JS with new HTML and dies silently
      (Ernest's Chrome, 30 Jul). -->
-<link rel="stylesheet" href="css/app.css?v=20260730e">
+<link rel="stylesheet" href="css/app.css?v=20260730f">
 </head>
 <body>
 
@@ -275,7 +282,7 @@
 
 <!-- Catalog, roster and customers load live from /api/catalog at boot —
      no merchant or staff data ships with this public repo. -->
-<script src="js/config.js?v=20260730e"></script>
-<script src="js/app.js?v=20260730e"></script>
+<script src="js/config.js?v=20260730f"></script>
+<script src="js/app.js?v=20260730f"></script>
 </body>
 </html>
