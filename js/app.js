@@ -1,7 +1,7 @@
-/* Smart GMV prototype — flow logic.
+/* Smart GMV — flow logic.
    Catalog (sites/merchants/customers) = DATA from data.js, generated from the real Sheet.
-   AI readings = mockExtract() in mock.js (deterministic per photo). Real build swaps
-   mockExtract for POST /api/extract and localStorage for the GMV Raw Data tab.
+   Saves go to POST /api/records (43+8-col GMV Raw Data row + photos on Drive);
+   readings come from POST /api/extract. CONFIG.apiBase '' = demo mode (simulated).
    All dynamic strings pass through esc(). */
 
 const $ = (id) => document.getElementById(id);
@@ -9,13 +9,41 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 const state = {
   site: null, staff: null, pin: '',
+  salesDate: null,                  // business date, frozen at login (before 06:00 = yesterday)
   merchants: [],                    // merchants of the selected site
   records: {},                      // merchantId -> record (today)
   history: {},                      // dayOffset -> { merchantId -> record } (past days, editable)
   baselines: {},                    // `${mid}:${ch}` -> baseline reading
+  baselineMeta: {},                 // merchantId -> { recordId, confirmedAt, saved, inFlight, error }
+  hydrateError: null,               // set when today's saved records could not be loaded
   current: null,                    // { m, mode, offset, from }
   viewer: null,                     // { ch, candidate }
 };
+
+/* ---------- record identity ----------
+   The record id is a pure function of merchant + business date, NOT a random
+   UUID: after a phone reload (or on a second device) the same merchant-day
+   maps to the same id, so a re-save becomes an in-place update on the server
+   instead of a duplicate billing row. */
+function djb2(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+function recordIdFor(m, type) {
+  const slug = (m.brand.toLowerCase().replace(/[^a-z0-9]/g, '') || 'x').slice(0, 12);
+  const hash = djb2(`${m.sfdcId}|${m.brand}|${m.kitchen}`).toString(36).padStart(4, '0').slice(0, 4);
+  return `${m.site}-${m.kitchen}-${slug}-${hash}-${state.salesDate.replace(/-/g, '')}-${type === 'baseline' ? 'B' : 'C'}`;
+}
+function businessDate() {
+  // Before 06:00 a round still belongs to yesterday (post-midnight closings).
+  const d = new Date(Date.now() - 6 * 3600 * 1000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function nowStamp() {
+  const d = new Date(); const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
 
 /* Record store for a given day. Today = live session records; past days are
    loaded once (demo: synthesized; production: read from the GMV Raw Data tab)
@@ -73,24 +101,57 @@ fileInput.onchange = () => {
   fileInput.value = '';
   if (!file || !ch) return;
   const reader = new FileReader();
-  reader.onload = () => downscale(reader.result).then((jpeg) => runExtraction(ch, jpeg));
+  reader.onload = () => downscale(reader.result, 1600, 0.85).then((jpeg) => runExtraction(ch, jpeg));
   reader.readAsDataURL(file);
 };
 function openPicker(ch) { pendingChannel = ch; fileInput.click(); }
 
-/* Re-encode to JPEG ≤1600px long edge: fixes iPhone HEIC uploads and cuts
+/* Pending-pickup orders: multi-select picker so staff can burst-shoot all the
+   locker orders in the native camera, then add them in one go. */
+const extrasInput = document.createElement('input');
+extrasInput.type = 'file';
+extrasInput.accept = 'image/*';
+extrasInput.multiple = true;
+extrasInput.style.display = 'none';
+document.body.appendChild(extrasInput);
+let pendingExtrasChannel = null;
+extrasInput.onchange = () => {
+  const files = [...(extrasInput.files || [])];
+  const ch = pendingExtrasChannel;
+  extrasInput.value = '';
+  if (!files.length || !ch) return;
+  const val = channelValue(ch) || {};
+  if (!channelValue(ch)) setChannelValue(ch, val);
+  val.extras = val.extras || [];
+  const room = 12 - val.extras.length;
+  if (room <= 0) { toast('Limit reached — up to 12 pending orders per channel'); return; }
+  if (files.length > room) toast(`Only ${room} more can be added (12 max) — first ${room} taken`);
+  files.slice(0, room).forEach((file) => {
+    const reader = new FileReader();
+    reader.onload = () => downscale(reader.result, 1280, 0.8).then((jpeg) => {
+      // order-detail pages are large-font text: 1280px keeps digits crisp at half the bytes
+      const entry = { photoUrl: jpeg, photoDirty: true, pendingAI: true, gen: val.gen || 0 };
+      val.extras.push(entry);
+      if (viewingCtx(state.current)) { renderChannelCards(); updateSaveBtn(); }
+      runExtraExtraction({ ...state.current }, ch, entry);
+    });
+    reader.readAsDataURL(file);
+  });
+};
+function openExtrasPicker(ch) { pendingExtrasChannel = ch; extrasInput.click(); }
+
+/* Re-encode to JPEG ≤maxPx long edge: fixes iPhone HEIC uploads and cuts
    upload size + AI token cost without losing digit legibility. */
-function downscale(dataUrl) {
+function downscale(dataUrl, maxPx = 1600, quality = 0.85) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 1600;
-      const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+      const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.naturalWidth * scale);
       canvas.height = Math.round(img.naturalHeight * scale);
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', 0.85));
+      resolve(canvas.toDataURL('image/jpeg', quality));
     };
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
@@ -168,11 +229,59 @@ function enterApp() {
   state.merchants = siteMerchants(state.site.id);
   state.records = {};
   state.baselines = {};
+  state.baselineMeta = {};
+  state.hydrateError = null;
+  state.salesDate = businessDate();
   $('hdr-site').textContent = `${state.site.name} · ${state.site.id}`;
   $('hdr-date').textContent = new Date().toLocaleDateString('en-SG', { weekday: 'short', day: 'numeric', month: 'short' });
   $('hdr-staff').textContent = state.staff.name;
   renderChecklist();
   show('view-checklist');
+  hydrateToday();
+}
+
+const numOrU = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v));
+
+/* Pull today's already-saved rows from the sheet so a reloaded phone (or a
+   second device) sees ✓ instead of re-capturing — re-captures would still be
+   in-place updates (deterministic ids), but staff shouldn't redo the round. */
+async function hydrateToday() {
+  if (!CONFIG.apiBase) return;
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/records/today?site=${state.site.id}&date=${state.salesDate}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const { records } = await r.json();
+    records.forEach((sr) => {
+      const m = state.merchants.find((x) => x.kitchen === sr.kitchen && x.brand === sr.brand);
+      if (!m) return;
+      if (sr.recordType === 'baseline') {
+        state.baselineMeta[m.id] = { recordId: sr.recordId, saved: true };
+        Object.entries(sr.channels).forEach(([ch, c]) => {
+          state.baselines[`${m.id}:${ch}`] = {
+            finalOrders: numOrU(c.orders), finalGmv: numOrU(c.gmv), photoLink: c.photoLink };
+        });
+      } else {
+        const rec = { status: sr.status || 'Operated', saved: true, serverSaved: true,
+          recordId: sr.recordId, staffName: (sr.staff || '').replace(/\s*\([^)]*\)$/, ''),
+          channels: {}, expanded: {} };
+        Object.entries(sr.channels).forEach(([ch, c]) => {
+          rec.channels[ch] = {
+            aiOrders: numOrU(c.aiOrders), aiGmv: numOrU(c.aiGmv),
+            finalOrders: numOrU(c.summaryOrders), finalGmv: numOrU(c.summaryGmv),
+            photoLink: c.photoLink || undefined,
+            extras: (c.extras || []).map((e) => ({ gmv: e.gmv, aiGmv: e.aiGmv ?? undefined,
+              conf: e.conf ?? undefined, orderRef: e.orderRef || '', photoLink: e.photo })),
+          };
+        });
+        state.records[m.id] = rec;
+      }
+    });
+    renderChecklist();
+  } catch (e) {
+    state.hydrateError = e.message;
+    renderChecklist();
+    toast(`⚠ Could not check the server for today's saved records (${e.message})`);
+  }
 }
 function channelFilled(rec, ch) {
   const c = rec.channels[ch];
@@ -183,14 +292,27 @@ function merchantDone(m) {
   if (!r || !r.saved) return false;
   return true;
 }
-function baselineDone(m) {
-  return CORE.every((ch) => {
-    const b = state.baselines[`${m.id}:${ch}`];
-    return b && !b.pendingAI;
-  });
-}
+/* "Baseline done" = the SERVER acknowledged the row, nothing less. A shot
+   sitting in phone memory is not evidence yet. */
+function baselineDone(m) { return !!state.baselineMeta[m.id]?.saved; }
 function baselineReading(m) {
   return CORE.some((ch) => state.baselines[`${m.id}:${ch}`]?.pendingAI);
+}
+function baselineHasShots(m) {
+  return CORE.some((ch) => channelHasData(state.baselines[`${m.id}:${ch}`]));
+}
+/* Confirmed by staff but not (yet) on the server — the record a licensee would
+   never get billed for. These must stay loudly visible until saved. */
+function saveFailed(rec) { return !!(rec && rec.saveError && !rec.inFlight); }
+function unsavedRecords() {
+  const list = [];
+  state.merchants.filter((m) => !m.disabled).forEach((m) => {
+    const r = state.records[m.id];
+    if (r && (saveFailed(r) || r.inFlight)) list.push({ m, kind: 'record' });
+    const bm = state.baselineMeta[m.id];
+    if (bm && !bm.saved && (bm.error || bm.inFlight)) list.push({ m, kind: 'baseline' });
+  });
+  return list;
 }
 function renderChecklist() {
   /* Disabled brands are hidden from capture but stay in state.merchants,
@@ -199,25 +321,34 @@ function renderChecklist() {
   const overnight = all.filter((m) => m.overnight);
   const doneCount = all.filter(merchantDone).length;
 
+  const failed = all.filter((m) => saveFailed(state.records[m.id])
+    || state.baselineMeta[m.id]?.error).length;
   $('prog-done').textContent = doneCount;
   $('prog-total').textContent = all.length;
   const frac = all.length ? doneCount / all.length : 0;
   $('ring-fg').style.strokeDashoffset = 194.8 * (1 - frac);
-  $('prog-sub').textContent = all.length === 0
-    ? 'No delivery merchants at this site yet'
+  $('prog-sub').textContent =
+    failed ? `❗ ${failed} record${failed > 1 ? 's' : ''} not saved — tap the red card to retry`
+    : state.hydrateError ? '⚠ Could not check the server for saved records — reload before capturing'
+    : all.length === 0 ? 'No delivery merchants at this site yet'
     : doneCount === all.length ? 'All done — great round! 🎉'
     : `${all.length - doneCount} merchants left · tap to capture`;
 
   $('sec-morning-label').classList.toggle('hidden', overnight.length === 0);
   $('list-morning').innerHTML = overnight.map((m) => {
-    const hasBase = baselineDone(m);
+    const bm = state.baselineMeta[m.id] || {};
     const reading = baselineReading(m);
-    const label = hasBase ? '✓ baseline saved' : reading ? '⏳ AI reading…' : '⚠ shoot baseline';
-    return `<div class="merchant-card" data-id="${esc(m.id)}" data-mode="baseline">
+    const st = bm.saved ? ['done', '✓ baseline saved']
+      : bm.inFlight ? ['pending', '⬆ saving…']
+      : bm.error ? ['flagred', '❗ not saved — tap to retry']
+      : reading ? ['pending', '⏳ AI reading…']
+      : baselineHasShots(m) ? ['flag', '🟡 confirm baseline']
+      : ['flag', '⚠ shoot baseline'];
+    return `<div class="merchant-card ${bm.error ? 'failed' : ''}" data-id="${esc(m.id)}" data-mode="baseline">
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
         <div class="m-tags"><span class="tag h24">24 HR</span></div></div>
-      <div class="m-status ${hasBase ? 'done' : reading ? 'pending' : 'flag'}">${label}</div>
+      <div class="m-status ${st[0]}">${st[1]}</div>
     </div>`;
   }).join('');
 
@@ -225,8 +356,13 @@ function renderChecklist() {
     const r = state.records[m.id];
     const done = merchantDone(m);
     let status = '<span class="m-status pending">○ pending</span>';
-    if (done && r.status === 'Operated') {
-      const tot = Object.values(r.channels).reduce((s, c) => s + Number(c.finalGmv ?? c.gmv ?? 0), 0);
+    if (r && r.inFlight) {
+      status = '<span class="m-status pending">⬆ saving…</span>';
+    } else if (r && saveFailed(r)) {
+      status = '<span class="m-status flagred">❗ not saved — tap to retry</span>';
+    } else if (done && r.status === 'Operated') {
+      const tot = Object.values(r.channels).reduce((s, c) =>
+        s + Number(c.finalGmv ?? c.gmv ?? 0) + (c.extras || []).reduce((t, e) => t + Number(e.gmv || 0), 0), 0);
       status = `<div style="text-align:right"><div class="m-status done">✓ saved</div><div class="m-total">${money(tot)}</div></div>`;
     } else if (done) {
       status = `<span class="m-status done">✓ ${esc(r.status)}</span>`;
@@ -249,14 +385,14 @@ function renderChecklist() {
 
   document.querySelectorAll('.merchant-card').forEach((c) => c.onclick = () => openCapture(c.dataset.id, c.dataset.mode));
 }
-$('btn-logout').onclick = logout;
+$('btn-logout').onclick = () => attemptLogout();
 function logout() { state.pin = ''; paintPin(); loginStep('site'); show('view-login'); }
 
 /* ---------- menu ---------- */
 $('btn-menu').onclick = () => $('menu-overlay').classList.remove('hidden');
 $('menu-cancel').onclick = () => $('menu-overlay').classList.add('hidden');
 $('menu-overlay').onclick = (e) => { if (e.target === $('menu-overlay')) $('menu-overlay').classList.add('hidden'); };
-$('menu-logout').onclick = () => { $('menu-overlay').classList.add('hidden'); logout(); };
+$('menu-logout').onclick = () => { $('menu-overlay').classList.add('hidden'); attemptLogout(); };
 $('menu-addbrand').onclick = () => { $('menu-overlay').classList.add('hidden'); openAddBrand(); };
 $('menu-review').onclick = () => { $('menu-overlay').classList.add('hidden'); openReview(); };
 $('menu-brands').onclick = () => { $('menu-overlay').classList.add('hidden'); openBrands(); };
@@ -449,12 +585,58 @@ function channelHasData(val) {
   return val && (val.photoUrl || val.finalOrders !== undefined || val.finalGmv !== undefined || val.orders !== undefined);
 }
 
+function extrasTotals(val) {
+  const list = val.extras || [];
+  return { n: list.length,
+           gmv: +list.reduce((s, e) => s + Number(e.gmv || 0), 0).toFixed(2) };
+}
+
+/* Pending rider pickup: orders done but not on the summary screen yet — one
+   photo per order, one order per photo (that is the evidence contract). */
+function extrasHTML(ch, val, rec) {
+  const list = val.extras || [];
+  const collapsed = list.length > 3 && !rec.expandedExtras?.[ch];
+  const rowHTML = (e, i) => {
+    const thumb = e.thumbUrl || e.photoUrl;
+    const stateIcon = e.pendingAI ? '<span class="spinner sm"></span>'
+      : e.dup ? '⚠' : e.conf === 'high' && !e.edited ? '✓' : e.edited ? '✎' : '⚠';
+    return `<div class="extra-row ${e.edited ? 'edited' : ''} ${e.dup ? 'dup' : ''}">
+      ${thumb ? `<img class="x-thumb" src="${thumb}" alt="order ${i + 1}">` : '<span class="x-thumb file">📎</span>'}
+      <span class="x-meta">#${i + 1}${e.orderRef ? ' · ' + esc(e.orderRef) : ''}<em>1 order</em></span>
+      <span class="x-state">${stateIcon}</span>
+      <input class="x-amt" inputmode="decimal" placeholder="0.00" data-x="${i}"
+        value="${e.gmv !== undefined && e.gmv !== null ? Number(e.gmv).toFixed(2) : ''}">
+      <button class="x-del" data-xdel="${i}" title="Remove this order">✕</button>
+    </div>`;
+  };
+  const done = list.filter((e) => !e.pendingAI && e.gmv !== undefined && e.gmv !== null);
+  const open = list.map((e, i) => [e, i]).filter(([e]) => !done.includes(e));
+  const body = collapsed
+    ? `<button class="extras-expand" data-xexpand="1">${done.length} order${done.length > 1 ? 's' : ''} added · ${money(extrasTotals(val).gmv)} — view all ›</button>`
+      + open.map(([e, i]) => rowHTML(e, i)).join('')
+    : list.map((e, i) => rowHTML(e, i)).join('');
+  return `<div class="extras-sec">
+    <div class="extras-head">⏳ Pending rider pickup
+      <span class="extras-hint">Order done but not in the summary yet? Shoot its order-details page — one photo per order. Shoot the summary first, then the locker.</span></div>
+    ${body}
+    <button class="extras-add" data-xadd="1">＋ Add pending order photos</button>
+  </div>`;
+}
+
+function totalStripHTML(ch, val) {
+  const x = extrasTotals(val);
+  if (!x.n) return '';
+  const so = Number(val.finalOrders || 0), sg = Number(val.finalGmv || 0);
+  return `<div class="total-strip">Recorded total: <b>${so + x.n} orders · ${money(sg + x.gmv)}</b>
+    <small>Summary ${so} · ${money(sg)} ＋ ${x.n} pending · ${money(x.gmv)}</small></div>`;
+}
+
 function channelBodyHTML(ch, val, base, mode) {
   const o = val.finalOrders ?? val.orders;
   const g = val.finalGmv ?? val.gmv;
   const fields = `<div class="reading-fields full">
-      <div class="rf ${val.editedOrders ? 'edited' : ''}"><label>Orders</label><input inputmode="numeric" placeholder="0" value="${o !== undefined ? Number(o) : ''}" data-f="orders"></div>
-      <div class="rf ${val.editedGmv ? 'edited' : ''}"><label>Sales (S$)</label><input inputmode="decimal" placeholder="0.00" value="${g !== undefined ? Number(g).toFixed(2) : ''}" data-f="gmv"></div>
+      <div class="rf ${val.editedOrders ? 'edited' : ''} ${val.invalidOrders ? 'bad' : ''}"><label>Orders</label><input inputmode="numeric" placeholder="0" value="${o !== undefined ? Number(o) : ''}" data-f="orders"></div>
+      <div class="rf ${val.editedGmv ? 'edited' : ''} ${val.invalidGmv ? 'bad' : ''}"><label>Sales (S$)</label><input inputmode="decimal" placeholder="0.00" value="${g !== undefined ? Number(g).toFixed(2) : ''}" data-f="gmv"></div>
     </div>`;
   const aiChannel = AI_CHANNELS.includes(ch);
   const statusLine = !aiChannel
@@ -469,7 +651,11 @@ function channelBodyHTML(ch, val, base, mode) {
           ${aiChannel ? `<span class="screen-note">${esc(val.screen || '')}</span>` : ''}
           <span class="tap-hint">👆 Tap photo to mark the correct number</span>
         </div>
-        <button class="retake">Retake</button></div>`
+        <div class="photo-btns"><button class="retake">Retake</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
+    : val.photoLink
+    ? `<div class="photo-row"><span class="photo-chip">🗂️ Photo on record</span>
+        <div class="ai-note-col"><span class="screen-note">Saved to Drive earlier — retake only if it was wrong.</span></div>
+        <div class="photo-btns"><button class="retake">Retake</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
     : `<div class="photo-slot"><span class="cam">📷</span> Snap or upload ${esc(CH_META[ch].name)} screen</div>
        <div class="no-photo-note">${aiChannel
          ? 'You can type the numbers first — but a photo is required as evidence before saving.'
@@ -478,23 +664,38 @@ function channelBodyHTML(ch, val, base, mode) {
   if (mode === 'baseline' && channelHasData(val)) {
     extra = `<div class="deduct-box">☀️ Stored as today's baseline — deducted tonight. Not billed.</div>`;
   } else if (base && channelHasData(val)) {
-    const bo = (o ?? 0) - base.orders;
-    const bg = (g ?? 0) - base.gmv;
-    extra = `<div class="deduct-box">☀️ Baseline this morning: ${base.orders} orders · ${money(base.gmv)}<br>
+    const x = extrasTotals(val);
+    const bOrders = Number(base.finalOrders ?? base.orders ?? 0);
+    const bGmv = Number(base.finalGmv ?? base.gmv ?? 0);
+    const bo = (o ?? 0) + x.n - bOrders;
+    const bg = (g ?? 0) + x.gmv - bGmv;
+    extra = `<div class="deduct-box">☀️ Baseline this morning: ${bOrders} orders · ${money(bGmv)}<br>
       🧾 <b>Billable 10 am–10 pm: ${bo} orders · ${money(bg)}</b></div>`;
   }
   const mism = val.mismatch ? `<div class="mismatch">⚠ ${esc(val.mismatch)}</div>` : '';
-  return fields + mism + extra + photo;
+  const extras = mode === 'evening' && !state.current.offset && AI_CHANNELS.includes(ch)
+    ? extrasHTML(ch, val, curRec()) + totalStripHTML(ch, val) : '';
+  return fields + mism + extra + photo + extras;
 }
 
 function wireChannel(card, ch) {
-  card.querySelectorAll('input').forEach((inp) => inp.oninput = () => {
+  card.querySelectorAll('.reading-fields input').forEach((inp) => inp.oninput = () => {
     let val = channelValue(ch);
     if (!val) { val = {}; setChannelValue(ch, val); }
-    if (inp.dataset.f === 'orders') { val.finalOrders = inp.value === '' ? undefined : Number(inp.value); val.editedOrders = true; }
-    else { val.finalGmv = inp.value === '' ? undefined : Number(inp.value); val.editedGmv = true; }
+    const raw = inp.value.trim();
+    const n = Number(raw);
+    const invalid = raw !== '' && (!isFinite(n) || n < 0);
+    if (inp.dataset.f === 'orders') {
+      val.invalidOrders = invalid;
+      if (!invalid) { val.finalOrders = raw === '' ? undefined : Math.round(n); val.editedOrders = true; }
+    } else {
+      val.invalidGmv = invalid;
+      if (!invalid) { val.finalGmv = raw === '' ? undefined : n; val.editedGmv = true; }
+    }
     val.edited = true;
-    inp.closest('.rf').classList.add('edited');
+    val._dirty = true;                 // baseline "update & save" tracking
+    inp.closest('.rf').classList.toggle('bad', invalid);
+    if (!invalid) inp.closest('.rf').classList.add('edited');
     updateSaveBtn();
   });
   const slot = card.querySelector('.photo-slot');
@@ -503,6 +704,75 @@ function wireChannel(card, ch) {
   if (rt) rt.onclick = () => openPicker(ch);
   const img = card.querySelector('img.thumb');
   if (img) img.onclick = () => openViewer(ch);
+
+  /* ✕ Remove: wipe this channel's photo + readings + marks + extras. The
+     generation bump makes any in-flight AI read settle into the void instead
+     of resurrecting deleted data. */
+  const rm = card.querySelector('.ch-remove');
+  if (rm) rm.onclick = () => {
+    const m = state.current.m;
+    askConfirm(`Remove ${CH_META[ch].name} data?`,
+      `The photo and the numbers entered for ${CH_META[ch].name} at ${m.brand} will be cleared here. `
+      + `If this was already saved, the row is updated when you save again — earlier values stay in the audit log.`,
+      'Yes, clear it', () => {
+        const prev = channelValue(ch) || {};
+        setChannelValue(ch, { gen: (prev.gen || 0) + 1 });
+        const rec = state.current.mode === 'baseline' ? null : curRec();
+        if (rec) rec.expanded[ch] = false;
+        renderChannelCards();
+        updateSaveBtn();
+        toast(`${CH_META[ch].name} cleared`);
+      });
+  };
+
+  /* Pending-pickup extras wiring */
+  const xadd = card.querySelector('[data-xadd]');
+  if (xadd) xadd.onclick = () => openExtrasPicker(ch);
+  const xexpand = card.querySelector('[data-xexpand]');
+  if (xexpand) xexpand.onclick = () => {
+    const rec = curRec();
+    (rec.expandedExtras = rec.expandedExtras || {})[ch] = true;
+    renderChannelCards();
+  };
+  card.querySelectorAll('.x-amt').forEach((inp) => inp.oninput = () => {
+    const val = channelValue(ch);
+    const e = val.extras?.[Number(inp.dataset.x)];
+    if (!e) return;
+    const raw = inp.value.trim();
+    const n = Number(raw);
+    const invalid = raw !== '' && (!isFinite(n) || n <= 0);
+    inp.closest('.extra-row').classList.toggle('bad', invalid);
+    e.invalid = invalid;
+    if (!invalid) { e.gmv = raw === '' ? undefined : n; e.edited = true; }
+    const strip = card.querySelector('.total-strip');
+    if (strip) strip.outerHTML = totalStripHTML(ch, val);
+    updateSaveBtn();
+  });
+  card.querySelectorAll('[data-xdel]').forEach((b) => b.onclick = () => {
+    const val = channelValue(ch);
+    const i = Number(b.dataset.xdel);
+    const e = val.extras?.[i];
+    if (!e) return;
+    askConfirm('Remove this pending order?',
+      `Order photo #${i + 1}${e.orderRef ? ' (' + e.orderRef + ')' : ''} and its amount will be removed from tonight's total.`,
+      'Yes, remove it', () => {
+        val.extras.splice(i, 1);
+        markDupRefs(val);
+        renderChannelCards();
+        updateSaveBtn();
+        toast('Pending order removed');
+      });
+  });
+}
+
+/* Flag extras whose order number was already added (same order shot twice). */
+function markDupRefs(val) {
+  const seen = {};
+  (val.extras || []).forEach((e) => {
+    const ref = (e.orderRef || '').trim();
+    e.dup = !!(ref && seen[ref]);
+    if (ref) seen[ref] = true;
+  });
 }
 
 /* ---------- async extraction ("snap & go") ----------
@@ -531,7 +801,7 @@ function runExtraction(ch, photoUrl) {
   // Non-AI channels: photo = evidence only, numbers stay manual.
   if (!AI_CHANNELS.includes(ch)) {
     const prev = readVal(ctx, ch) || {};
-    writeVal(ctx, ch, { ...prev, photoUrl,
+    writeVal(ctx, ch, { ...prev, photoUrl, photoDirty: true, photoLink: undefined,
       screen: 'Photo saved as evidence — enter the numbers manually for this channel.' });
     renderChannelCards();
     updateSaveBtn();
@@ -540,11 +810,17 @@ function runExtraction(ch, photoUrl) {
 
   const rec = ctx.mode === 'baseline' ? null : recordsFor(ctx.offset)[ctx.m.id];
   if (rec) rec.pending = (rec.pending || 0) + 1;
-  writeVal(ctx, ch, { ...(readVal(ctx, ch) || {}), photoUrl, pendingAI: true });
+  writeVal(ctx, ch, { ...(readVal(ctx, ch) || {}), photoUrl, photoDirty: true,
+    photoLink: undefined, pendingAI: true });
+  const gen = (readVal(ctx, ch) || {}).gen || 0;   // ✕ Remove bumps this
   if (viewingCtx(ctx)) { renderChannelCards(); updateSaveBtn(); }
 
   const settle = (patch) => {
     const prev = readVal(ctx, ch) || {};
+    if ((prev.gen || 0) !== gen) {                 // channel was cleared mid-read
+      if (rec) rec.pending = Math.max(0, (rec.pending || 1) - 1);
+      return;
+    }
     const val = { ...prev, ...patch, photoUrl, pendingAI: false };
     // Respect anything the staff member typed while the read was in flight.
     if (prev.editedOrders) val.finalOrders = prev.finalOrders;
@@ -589,6 +865,43 @@ function runExtraction(ch, photoUrl) {
     })
     .catch((e) => settle({ orders: undefined, gmv: undefined, conf: 'low', screen: '',
       mismatch: `AI reading failed (${e.message}) — type the numbers manually, the photo is kept as evidence.` }));
+}
+
+/* Pending-pickup order: read ONE order-details page. One photo = one order —
+   the AI only fills the amount; a failed read leaves it for manual typing. */
+function runExtraExtraction(ctx, ch, entry) {
+  const apply = (patch) => {
+    const val = readVal(ctx, ch);
+    if (!val || !val.extras || !val.extras.includes(entry)) return;   // removed meanwhile
+    if ((val.gen || 0) !== (entry.gen || 0)) return;                  // channel cleared
+    Object.assign(entry, patch, { pendingAI: false });
+    if (!entry.edited && patch.aiGmv !== undefined && patch.aiGmv !== null) entry.gmv = patch.aiGmv;
+    markDupRefs(val);
+    if (viewingCtx(ctx)) { renderChannelCards(); updateSaveBtn(); }
+  };
+
+  if (!CONFIG.apiBase) {
+    const d = mockExtract(ch, 'closing', ctx.m, entry.photoUrl);
+    setTimeout(() => apply({ aiGmv: +((d.gmv || 25) / 8).toFixed(2), conf: 'high',
+      orderRef: 'DEMO-' + Math.floor(Math.random() * 900 + 100) }), 900);
+    return;
+  }
+
+  fetch(`${CONFIG.apiBase}/api/extract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: entry.photoUrl, channel: ch, mode: 'closing',
+      shot: 'single_order', brand: ctx.m.brand }),
+  })
+    .then(async (r) => {
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      return r.json();
+    })
+    .then((d) => apply({ aiGmv: d.gmv ?? null, conf: d.confidence,
+      orderRef: (d.order_ref || '').trim(),
+      aiNote: d.wrong_channel ? `looks like ${d.platform}, not ${CH_META[ch].name}` : '' }))
+    .catch((e) => apply({ aiGmv: null, conf: 'low', aiFail: true,
+      aiNote: `AI reading failed (${e.message}) — type the amount from the photo` }));
 }
 
 /* ---------- photo viewer: tap-to-correct ---------- */
@@ -710,11 +1023,26 @@ function closeViewer() {
 }
 
 /* ---------- save ---------- */
+function recHasChannelData(rec) {
+  return Object.values(rec.channels || {}).some((v) => channelHasData(v) || (v.extras || []).length);
+}
+function extrasBlockers(rec) {
+  const out = [];
+  Object.entries(rec.channels || {}).forEach(([ch, v]) => {
+    const n = (v.extras || []).filter((e) => e.pendingAI || e.invalid || !(Number(e.gmv) > 0)).length;
+    if (n) out.push(`${CH_META[ch].name}: ${n} pending order${n > 1 ? 's need amounts' : ' needs an amount'}`);
+  });
+  return out;
+}
+function invalidFields(rec) {
+  return Object.values(rec.channels || {}).some((v) => v.invalidOrders || v.invalidGmv);
+}
 function coreReady() {
-  const { m, mode } = state.current;
-  if (mode === 'baseline') return baselineDone(m);
+  const { mode } = state.current;
   const rec = curRec();
+  if (mode === 'baseline') return false;   // baselines use their own flow below
   if (rec.status !== 'Operated') return true;
+  if (invalidFields(rec) || extrasBlockers(rec).length) return false;
   return CORE.every((ch) => {
     const v = rec.channels[ch];
     return v && v.finalOrders !== undefined && v.finalGmv !== undefined;
@@ -722,30 +1050,56 @@ function coreReady() {
 }
 function missingPhotos() {
   const rec = curRec();
-  return CORE.filter((ch) => rec.channels[ch] && !rec.channels[ch].photoUrl);
+  return CORE.filter((ch) => rec.channels[ch] && !rec.channels[ch].photoUrl && !rec.channels[ch].photoLink);
 }
 function photosCaptured() {
   /* All CORE screens photographed (reads may still be in flight). */
   const rec = curRec();
-  return rec.status === 'Operated' && CORE.every((ch) => rec.channels[ch]?.photoUrl);
+  return rec.status === 'Operated' && CORE.every((ch) => rec.channels[ch]?.photoUrl || rec.channels[ch]?.photoLink);
 }
+function baselineShots(mid) {
+  return CORE.map((ch) => state.baselines[`${mid}:${ch}`]).filter(Boolean);
+}
+function baselineSettled(mid) {
+  return baselineShots(mid).filter((b) => !b.pendingAI
+    && b.finalOrders !== undefined && b.finalGmv !== undefined);
+}
+function baselineDirty(mid) {
+  return baselineShots(mid).some((b) => b._dirty || b.photoDirty);
+}
+
 function updateSaveBtn() {
   const { m, mode, offset } = state.current;
   const btn = $('btn-save');
   if (mode === 'baseline') {
-    const done = baselineDone(m);
-    const shooting = baselineReading(m);
-    btn.disabled = !done && !shooting;
-    btn.textContent = done ? 'Done — back to list'
-      : shooting ? 'Reading in background — next kitchen ➜'
-      : 'Shoot all screens to finish';
+    const meta = state.baselineMeta[m.id] || {};
+    const settled = baselineSettled(m.id);
+    const reading = baselineReading(m);
+    if (meta.inFlight) { btn.disabled = true; btn.textContent = '⬆ Saving baseline…'; }
+    else if (meta.error) { btn.disabled = false; btn.textContent = '❗ Retry baseline save'; }
+    else if (meta.saved && !baselineDirty(m.id)) { btn.disabled = false; btn.textContent = 'Baseline saved ✓ — back to list'; }
+    else if (settled.length) {
+      btn.disabled = false;
+      btn.textContent = meta.saved ? 'Update baseline & save'
+        : `Confirm baseline & save${settled.length < CORE.length ? ' (partial)' : ''}`;
+    }
+    else if (reading) { btn.disabled = true; btn.textContent = 'Reading… hang on a moment'; }
+    else { btn.disabled = true; btn.textContent = 'Shoot the screens to start'; }
     return;
   }
   const rec = curRec();
+  if (rec.inFlight) { btn.disabled = true; btn.textContent = '⬆ Saving…'; return; }
+  const blockers = rec.status === 'Operated' ? extrasBlockers(rec) : [];
+  if (!offset && blockers.length) { btn.disabled = true; btn.textContent = blockers[0]; return; }
+  if (rec.status === 'Operated' && invalidFields(rec)) {
+    btn.disabled = true; btn.textContent = 'Fix the highlighted numbers'; return;
+  }
   if (coreReady()) {
     btn.disabled = false;
     btn.textContent = offset ? `Save changes for ${dayLabel(offset)}`
-      : rec.status === 'Operated' ? 'Confirm & save' : `Save as “${rec.status}”`;
+      : rec.saveError ? '❗ Retry save'
+      : rec.status !== 'Operated' ? `Save as “${rec.status}”`
+      : rec.serverSaved ? 'Save changes' : 'Confirm & save';
   } else if (!offset && photosCaptured()) {
     btn.disabled = false;
     btn.textContent = 'Photos captured — next kitchen ➜';
@@ -754,33 +1108,269 @@ function updateSaveBtn() {
     btn.textContent = rec.status === 'Operated' ? 'Confirm & save' : `Save as “${rec.status}”`;
   }
 }
+
+function channelSummaryText(rec) {
+  return Object.entries(rec.channels)
+    .filter(([, v]) => channelHasData(v) || (v.extras || []).length)
+    .map(([ch, v]) => {
+      const x = extrasTotals(v);
+      return `${CH_META[ch].name} ${Number(v.finalOrders || 0) + x.n} · ${money(Number(v.finalGmv || 0) + x.gmv)}`;
+    }).join(', ');
+}
+
+/* Build the /api/records payload for TODAY's record. Past-day rows (Review)
+   must never reach this — write-back with audit is a separate work item. */
+function buildPayload(m, rec) {
+  if (state.current && state.current.offset && state.current.m.id === m.id) {
+    throw new Error('past-day records cannot be saved from this build');
+  }
+  const channels = {};
+  rec._sent = {};
+  if (rec.status === 'Operated') {
+    Object.entries(rec.channels).forEach(([ch, v]) => {
+      const hasExtras = (v.extras || []).length > 0;
+      if (!channelHasData(v) && !hasExtras) return;
+      const c = {
+        aiOrders: v.aiOrders ?? null, aiGmv: v.aiGmv ?? null,
+        finalOrders: v.finalOrders ?? null, finalGmv: v.finalGmv ?? null,
+        edited: !!(v.editedOrders || v.editedGmv || (v.marks || []).length),
+        conf: v.conf ?? null, screen: (v.screen || '').slice(0, 400),
+        zero: !!v.zero, marks: v.marks || [],
+      };
+      if (v.photoDirty && v.photoUrl) c.photo = v.photoUrl;
+      else if (v.photoLink) c.photoLink = v.photoLink;
+      if (hasExtras) {
+        c.extras = v.extras.map((e) => {
+          const x = { gmv: Number(e.gmv), aiGmv: e.aiGmv ?? null,
+                      conf: e.conf ?? null, orderRef: e.orderRef || '' };
+          if (e.photoDirty && e.photoUrl) x.photo = e.photoUrl;
+          else if (e.photoLink) x.photoLink = e.photoLink;
+          return x;
+        });
+      }
+      channels[ch] = c;
+      rec._sent[ch] = { val: v, extras: v.extras || [] };
+    });
+  }
+  return { recordId: rec.recordId, recordType: 'closing', salesDate: state.salesDate,
+    confirmedAt: rec.confirmedAt, staffName: state.staff.name, staffId: state.staff.id || '',
+    site: m.site, siteName: state.site.name, kitchen: m.kitchen, brand: m.brand,
+    sfdcId: m.sfdcId, merchantType: m.type || '', kitchenStatus: rec.status,
+    channels, notes: '' };
+}
+
+/* After a confirmed save, swap uploaded photos to their Drive links and drop
+   the base64 copies — 25 kitchens of full-size dataURLs is exactly what gets
+   a mobile Safari tab evicted mid-round. */
+function adoptLinks(rec, resp) {
+  Object.entries(resp.photoLinks || {}).forEach(([ch, link]) => {
+    const v = (rec._sent[ch] && rec._sent[ch].val) || rec.channels[ch];
+    if (v && link) { v.photoLink = link; v.photoDirty = false; v.photoUrl = undefined; }
+  });
+  Object.entries(resp.extrasLinks || {}).forEach(([ch, links]) => {
+    const sent = rec._sent[ch] ? rec._sent[ch].extras : [];
+    links.forEach((link, i) => {
+      const e = sent[i];
+      if (e && link) { e.photoLink = link; e.photoDirty = false; e.photoUrl = undefined; }
+    });
+  });
+}
+
+function refreshAfterSave(mid) {
+  if (state.current && state.current.m.id === mid && !$('view-capture').classList.contains('hidden')) {
+    renderChannelCards();
+    updateSaveBtn();
+  }
+  if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
+}
+
+async function postRecord(payload) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 90000);
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/records`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload), signal: ctrl.signal });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    return d;
+  } finally { clearTimeout(t); }
+}
+
+async function saveRecord(mid) {
+  const m = findMerchant(mid);
+  const rec = state.records[mid];
+  if (!rec || rec.inFlight) return;
+  if (!rec.recordId) rec.recordId = recordIdFor(m, 'closing');
+  if (!rec.confirmedAt) rec.confirmedAt = nowStamp();   // frozen across retries
+  rec.staffName = rec.staffName || state.staff.name;
+  rec.inFlight = true;
+  rec.saveError = null;
+  refreshAfterSave(mid);
+
+  const finish = (err, resp) => {
+    rec.inFlight = false;
+    if (err) {
+      rec.saveError = err;
+      toast(`❗ ${m.brand} NOT saved — ${err}. It stays on your list; tap the red card to retry.`);
+    } else {
+      rec.saved = true; rec.serverSaved = true; rec.draft = false; rec.saveError = null;
+      adoptLinks(rec, resp || {});
+      if (rec.status !== 'Operated') rec.channels = {};
+      if (resp && resp.billing === 'NO_BASELINE') {
+        const why = (resp.billingNotes || []).find((n) => n.toLowerCase().includes('baseline'));
+        toast(`${m.brand} saved — ⚠ ${why || 'no morning baseline'} · flagged for supervisor`);
+      }
+      else if (resp && resp.warnings && resp.warnings.length) toast(`${m.brand} saved — ⚠ ${resp.warnings[0]}`);
+      else toast(`${m.brand} saved ✓`);
+    }
+    refreshAfterSave(mid);
+  };
+
+  if (!CONFIG.apiBase) { setTimeout(() => finish(null, { billing: 'OK', photoLinks: {}, extrasLinks: {}, warnings: [] }), 700); return; }
+  try {
+    finish(null, await postRecord(buildPayload(m, rec)));
+  } catch (e) {
+    finish(e.name === 'AbortError' ? 'timed out after 90s' : e.message, null);
+  }
+}
+
+async function saveBaseline(mid) {
+  const m = findMerchant(mid);
+  const meta = state.baselineMeta[mid] = state.baselineMeta[mid] || {};
+  if (meta.inFlight) return;
+  if (!meta.recordId) meta.recordId = recordIdFor(m, 'baseline');
+  if (!meta.confirmedAt) meta.confirmedAt = nowStamp();
+  const channels = {};
+  const sent = {};
+  CORE.forEach((ch) => {
+    const b = state.baselines[`${mid}:${ch}`];
+    if (!b || b.pendingAI || b.finalOrders === undefined || b.finalGmv === undefined) return;
+    const c = { aiOrders: b.aiOrders ?? null, aiGmv: b.aiGmv ?? null,
+      finalOrders: b.finalOrders, finalGmv: b.finalGmv,
+      edited: !!(b.editedOrders || b.editedGmv), conf: b.conf ?? null,
+      screen: (b.screen || '').slice(0, 400), zero: !!b.zero, marks: b.marks || [] };
+    if (b.photoDirty && b.photoUrl) c.photo = b.photoUrl;
+    else if (b.photoLink) c.photoLink = b.photoLink;
+    channels[ch] = c;
+    sent[ch] = b;
+  });
+  if (!Object.keys(channels).length) { toast('Shoot at least one screen first'); return; }
+  meta.inFlight = true;
+  meta.error = null;
+  updateSaveBtn();
+
+  const finish = (err, resp) => {
+    meta.inFlight = false;
+    if (err) {
+      meta.error = err;
+      toast(`❗ ${m.brand} baseline NOT saved — ${err}. Tap the red card to retry.`);
+      if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
+      updateSaveBtn();
+    } else {
+      meta.saved = true; meta.error = null;
+      Object.entries(resp.photoLinks || {}).forEach(([ch, link]) => {
+        const b = sent[ch];
+        if (b && link) { b.photoLink = link; b.photoDirty = false; b.photoUrl = undefined; b._dirty = false; }
+      });
+      Object.values(sent).forEach((b) => { b._dirty = false; });
+      toast(`${m.brand} baseline saved ✓ — deducted automatically tonight`);
+      renderChecklist();
+      show('view-checklist');
+    }
+  };
+
+  const payload = { recordId: meta.recordId, recordType: 'baseline', salesDate: state.salesDate,
+    confirmedAt: meta.confirmedAt, staffName: state.staff.name, staffId: state.staff.id || '',
+    site: m.site, siteName: state.site.name, kitchen: m.kitchen, brand: m.brand,
+    sfdcId: m.sfdcId, merchantType: m.type || '', kitchenStatus: 'Operated',
+    channels, notes: '' };
+  if (!CONFIG.apiBase) { setTimeout(() => finish(null, { photoLinks: {} }), 700); return; }
+  try {
+    finish(null, await postRecord(payload));
+  } catch (e) {
+    finish(e.name === 'AbortError' ? 'timed out after 90s' : e.message, null);
+  }
+}
+
 $('btn-save').onclick = () => {
   const { m, mode, offset, from } = state.current;
   if (mode === 'baseline') {
-    toast(baselineDone(m) ? `${m.brand} baseline done ✓` : `${m.brand} baseline reading in background ⏳`);
-  } else if (!coreReady() && photosCaptured()) {
-    // Snap & go: photos in, reads still running — park as draft and move on.
-    const rec = curRec();
-    rec.draft = true;
-    toast(`${m.brand} parked ⏳ — confirm when readings are ready`);
-  } else {
-    const rec = curRec();
-    const noPhoto = rec.status === 'Operated' ? missingPhotos() : [];
+    const meta = state.baselineMeta[m.id] || {};
+    if (meta.saved && !baselineDirty(m.id) && !meta.error) { renderChecklist(); show('view-checklist'); return; }
+    saveBaseline(m.id);
+    return;
+  }
+  const rec = curRec();
+  if (offset) {
+    /* Past-day edits stay demo-only: write-back with audit is a separate work
+       item, and a synthesized demo row must never become a billing row. */
     rec.saved = true;
     rec.draft = false;
-    if (offset) {
-      /* production: writes back to the GMV Raw Data row with an audit trail */
-      rec.amendedBy = state.staff.name;
-      toast(`${m.brand} updated for ${dayLabel(offset)} ✓ — audit logged`);
-    } else {
-      rec.staffName = state.staff.name;
-      if (noPhoto.length) toast(`Saved — flagged: no photo for ${noPhoto.map((c) => CH_META[c].name).join(', ')}`);
-      else toast(`${m.brand} saved ✓`);
-    }
+    rec.amendedBy = state.staff.name;
+    toast(`${m.brand} updated for ${dayLabel(offset)} ✓ — audit logged`);
+    if (from === 'review') { renderReview(); show('view-review'); }
+    else { renderChecklist(); show('view-checklist'); }
+    return;
   }
-  if (from === 'review') { renderReview(); show('view-review'); }
-  else { renderChecklist(); show('view-checklist'); }
+  if (!coreReady() && photosCaptured()) {
+    // Snap & go: photos in, reads still running — park as draft and move on.
+    rec.draft = true;
+    toast(`${m.brand} parked ⏳ — confirm when readings are ready`);
+    renderChecklist();
+    show('view-checklist');
+    return;
+  }
+  if (!coreReady()) return;
+  const noPhoto = rec.status === 'Operated' ? missingPhotos() : [];
+  const doSave = () => {
+    saveRecord(m.id);
+    if (noPhoto.length) toast(`Saving — flagged: no photo for ${noPhoto.map((c) => CH_META[c].name).join(', ')}`);
+    renderChecklist();
+    show('view-checklist');
+  };
+  if (rec.status !== 'Operated' && recHasChannelData(rec)) {
+    askConfirm(`Save as “${rec.status}”?`,
+      `Tonight's readings (${channelSummaryText(rec)}) will be cleared from ${m.brand}'s record. `
+      + 'Previous values stay in the audit log, and replaced photos go to the Drive trash.',
+      `Yes, save as ${rec.status}`, doSave);
+    return;
+  }
+  doSave();
 };
+
+/* ---------- confirm sheet + logout guard ---------- */
+function askConfirm(title, detail, yesLabel, onYes) {
+  $('convert-title').textContent = title;
+  $('convert-detail').textContent = detail;
+  $('convert-yes-label').textContent = yesLabel;
+  $('convert-overlay').classList.remove('hidden');
+  $('convert-yes').onclick = () => { $('convert-overlay').classList.add('hidden'); onYes(); };
+  $('convert-cancel').onclick = () => $('convert-overlay').classList.add('hidden');
+}
+
+function logoutRisks() {
+  const list = unsavedRecords();
+  state.merchants.filter((m) => !m.disabled).forEach((m) => {
+    const r = state.records[m.id];
+    if (r && r.draft && !r.saved && !r.inFlight && !saveFailed(r)) list.push({ m, kind: 'draft' });
+  });
+  return list;
+}
+function attemptLogout() {
+  const risks = logoutRisks();
+  if (!risks.length) { logout(); return; }
+  $('guard-list').textContent = risks.map((u) =>
+    `${u.m.kitchen} ${u.m.brand}${u.kind === 'baseline' ? ' (baseline)' : u.kind === 'draft' ? ' (not confirmed yet — open it and confirm)' : ''}`
+  ).join('  ·  ');
+  $('guard-overlay').classList.remove('hidden');
+}
+$('guard-cancel').onclick = () => $('guard-overlay').classList.add('hidden');
+$('guard-retry').onclick = () => {
+  $('guard-overlay').classList.add('hidden');
+  unsavedRecords().forEach((u) => (u.kind === 'baseline' ? saveBaseline(u.m.id) : saveRecord(u.m.id)));
+};
+$('guard-logout').onclick = () => { $('guard-overlay').classList.add('hidden'); logout(); };
 
 /* ---------- add new brand (two pages) ---------- */
 const ab = { customer: null };
@@ -855,7 +1445,7 @@ $('ab-create').onclick = () => {
 /* ---------- boot ---------- */
 if (CONFIG.apiBase) {
   const b = $('mode-badge');
-  b.textContent = 'LIVE AI · readings by Claude — always double-check against the device screen';
+  b.textContent = 'LIVE · AI readings + saves to the GMV sheet — always double-check against the device screen';
   b.style.background = 'var(--green-bg)';
   b.style.color = 'var(--green)';
 }

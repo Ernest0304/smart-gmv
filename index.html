@@ -191,6 +191,27 @@
   </div>
 </div>
 
+<!-- ============ LOGOUT GUARD (unsaved records) ============ -->
+<div class="overlay hidden" id="guard-overlay">
+  <div class="menu-sheet">
+    <div class="guard-title">❗ Some records are not saved yet</div>
+    <p class="ab-note" id="guard-list" style="margin:6px 0 14px"></p>
+    <button class="menu-item" id="guard-retry">🔄 <span>Retry saving all</span></button>
+    <button class="menu-item guard-danger" id="guard-logout">⏻ <span>Log out anyway — unsaved data will be lost</span></button>
+    <button class="menu-cancel" id="guard-cancel">Stay logged in</button>
+  </div>
+</div>
+
+<!-- ============ STATUS CONVERSION CONFIRM ============ -->
+<div class="overlay hidden" id="convert-overlay">
+  <div class="menu-sheet">
+    <div class="guard-title" id="convert-title">Change status?</div>
+    <p class="ab-note" id="convert-detail" style="margin:6px 0 14px"></p>
+    <button class="menu-item guard-danger" id="convert-yes">✓ <span id="convert-yes-label">Yes, clear the readings</span></button>
+    <button class="menu-cancel" id="convert-cancel">Keep the readings</button>
+  </div>
+</div>
+
 <!-- ============ TOAST ============ -->
 <div class="toast hidden" id="toast"></div>
 

@@ -314,3 +314,37 @@ body {
   background: var(--ink); color: #fff; padding: 12px 20px; border-radius: 99px;
   font-size: 14px; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,.25); z-index: 50; white-space: nowrap;
 }
+
+/* ---------- Save states (T2) ---------- */
+.m-status.flagred { color: var(--red); font-weight: 800; }
+.merchant-card.failed { border-color: var(--red); background: #FDF3F3; }
+.photo-btns { margin-left: auto; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.photo-btns .retake { margin-left: 0; }
+.ch-remove { background: none; border: none; color: var(--ink-3); font-weight: 700; font-size: 12.5px; cursor: pointer; }
+.ch-remove:active { color: var(--red); }
+.photo-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 10px; background: #F6F5F2; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.rf.bad { border-color: var(--red) !important; background: #FDF3F3; }
+.guard-title { font-size: 16px; font-weight: 800; padding: 4px 2px 2px; }
+.menu-item.guard-danger { color: var(--red); }
+
+/* ---------- Pending rider pickup (extras) ---------- */
+.extras-sec { margin-top: 14px; border-top: 1.5px dashed var(--line); padding-top: 12px; }
+.extras-head { font-size: 13px; font-weight: 800; }
+.extras-hint { display: block; font-size: 11.5px; font-weight: 500; color: var(--ink-3); line-height: 1.45; margin-top: 2px; }
+.extra-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); }
+.extra-row.edited { border-color: var(--amber); background: #FDF9F0; }
+.extra-row.bad { border-color: var(--red); background: #FDF3F3; }
+.extra-row.dup { border-color: var(--red); }
+.extra-row.dup::after { content: "same order number added twice"; font-size: 10.5px; color: var(--red); font-weight: 700; }
+.x-thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex: none; background: #EEE; }
+.x-thumb.file { display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
+.x-meta { font-size: 12px; font-weight: 700; color: var(--ink-2); min-width: 52px; }
+.x-meta em { display: block; font-style: normal; font-size: 10.5px; color: var(--ink-3); font-weight: 600; }
+.x-state { font-size: 13px; flex: none; width: 18px; text-align: center; }
+.x-amt { flex: 1; min-width: 70px; padding: 9px 10px; border: 1.5px solid var(--line); border-radius: 10px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.x-del { background: none; border: none; color: var(--ink-3); font-size: 15px; font-weight: 700; cursor: pointer; padding: 6px; }
+.extras-add { width: 100%; margin-top: 10px; padding: 11px; border: 1.5px dashed var(--line); border-radius: 12px; background: none; color: var(--blue); font-size: 13px; font-weight: 800; cursor: pointer; }
+.extras-expand { width: 100%; margin-top: 10px; padding: 10px; border: none; background: #F6F5F2; border-radius: 10px; color: var(--ink-2); font-size: 12.5px; font-weight: 700; cursor: pointer; text-align: left; }
+.total-strip { margin-top: 12px; padding: 11px 14px; border-radius: 12px; background: var(--ink); color: #fff; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.total-strip b { font-size: 15px; }
+.total-strip small { display: block; opacity: .75; font-size: 11.5px; margin-top: 2px; }
