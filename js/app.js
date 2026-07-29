@@ -127,10 +127,9 @@ const AI_CHANNELS = ['grab', 'fp'];               // only these call the AI engi
 const fileInput = document.createElement('input');
 fileInput.type = 'file';
 fileInput.accept = 'image/*';
-// Straight to the camera (Ernest 29 Jul): the main slot's real-world use is a
-// live shot of the tablet in front of you — the chooser sheet cost ~50 extra
-// taps a night. The extras picker below keeps gallery multi-select.
-fileInput.setAttribute('capture', 'environment');
+// NO capture attribute (reverted 29 Jul night, field feedback): forcing the
+// camera removed the gallery option, and staff genuinely burst-shoot in the
+// native camera first, then upload. The chooser sheet keeps both paths.
 fileInput.style.display = 'none';
 document.body.appendChild(fileInput);
 let pendingChannel = null;
@@ -143,15 +142,7 @@ fileInput.onchange = () => {
   reader.onload = () => downscale(reader.result, 1600, 0.85).then((jpeg) => runExtraction(ch, jpeg));
   reader.readAsDataURL(file);
 };
-function openPicker(ch) {
-  pendingChannel = ch;
-  // First shot goes straight to the camera; a RETAKE may need the gallery
-  // (tablet already off, correct shot sitting in the camera roll).
-  const cur = channelValue(ch);
-  if (cur && (cur.photoUrl || cur.photoLink)) fileInput.removeAttribute('capture');
-  else fileInput.setAttribute('capture', 'environment');
-  fileInput.click();
-}
+function openPicker(ch) { pendingChannel = ch; fileInput.click(); }
 
 /* Pending-pickup orders: multi-select picker so staff can burst-shoot all the
    locker orders in the native camera, then add them in one go. */
@@ -1150,7 +1141,7 @@ function channelBodyHTML(ch, val, base, mode) {
     ? `<div class="photo-row"><span class="photo-chip">🗂️ Photo on record</span>
         <div class="ai-note-col"><span class="screen-note">Saved to Drive earlier — retake only if it was wrong.</span></div>
         <div class="photo-btns"><button class="retake">Retake</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
-    : `<div class="photo-slot"><span class="cam">📷</span> Snap the ${esc(CH_META[ch].name)} screen</div>
+    : `<div class="photo-slot"><span class="cam">📷</span> Snap or upload ${esc(CH_META[ch].name)} screen</div>
        <div class="no-photo-note">${aiChannel
          ? 'You can type the numbers first — but a photo is required as evidence before saving.'
          : 'This channel is manual — type the numbers, and attach a photo as evidence.'}</div>`;
