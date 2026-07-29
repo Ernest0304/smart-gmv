@@ -2186,8 +2186,9 @@ function renderBilling(d) {
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
         <div class="m-tags"><span class="bl-days">${m.days} day${m.days > 1 ? 's' : ''} recorded</span></div></div>
-      <div style="text-align:right"><div class="m-total">${money(m.totalGmv)}</div>
-        <div class="bl-mini">G ${money(m.billableGrabGmv)} · F ${money(m.billableFpGmv)}${manual(m) ? ' · other ' + money(manual(m)) : ''}</div></div>
+      <div style="text-align:right"><div class="bl-orders">${m.totalOrders} order${m.totalOrders === 1 ? '' : 's'}</div>
+        <div class="m-total">${money(m.totalGmv)}</div>
+        <div class="bl-mini">G ${m.billableGrabOrders} · ${money(m.billableGrabGmv)}&nbsp;&nbsp;F ${m.billableFpOrders} · ${money(m.billableFpGmv)}</div></div>
     </div>`).join('');
   const flags = d.flags.length
     ? `<div class="section-label" style="margin-top:22px">${ic('alert')} Needs review <span class="sec-hint">${d.flags.length} record${d.flags.length > 1 ? 's' : ''} — clear these before invoicing</span></div>
@@ -2196,8 +2197,8 @@ function renderBilling(d) {
   $('bl-body').innerHTML = `
     <div class="progress-card" style="display:block">
       <span class="bl-cap">Site total · ${esc(monthLabel(d.month))} · billable</span>
-      <div class="bl-big">${money(t.totalGmv)}</div>
-      <div class="bl-mini">Grab ${money(t.billableGrabGmv)} · foodpanda ${money(t.billableFpGmv)} · manual channels ${money(t.othersGmv + t.cateringGmv + t.dineinGmv + t.promoDineinGmv)}</div>
+      <div class="bl-big">${t.totalOrders.toLocaleString()} orders · ${money(t.totalGmv)}</div>
+      <div class="bl-mini">Grab ${t.billableGrabOrders.toLocaleString()} · ${money(t.billableGrabGmv)}&nbsp;&nbsp;foodpanda ${t.billableFpOrders.toLocaleString()} · ${money(t.billableFpGmv)}&nbsp;&nbsp;manual ${(t.othersOrders + t.cateringOrders + t.dineinOrders + t.promoDineinOrders).toLocaleString()} · ${money(t.othersGmv + t.cateringGmv + t.dineinGmv + t.promoDineinGmv)}</div>
     </div>
     <div class="merchant-list" style="margin-top:14px">${rows}</div>
     ${flags}`;
