@@ -366,3 +366,8 @@ body {
 .reg-pin-row { display: flex; gap: 10px; margin-top: 4px; }
 .reg-pin-row .search-input { text-align: center; letter-spacing: 8px; font-size: 18px; }
 .pin-sub { font-size: 13px; color: var(--ink-2); text-align: center; margin: -8px 0 10px; }
+
+/* empty site (S13 before tenants move in) */
+.empty-note { background: #fff; border-radius: 14px; padding: 30px 18px; text-align: center;
+  color: #555; font-size: 15px; line-height: 1.7; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.empty-note small { color: #999; }

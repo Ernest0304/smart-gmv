@@ -8,7 +8,7 @@
 <!-- ?v= pairs the HTML with matching assets — bump it on EVERY deploy, or a
      browser holding a cached copy mixes old JS with new HTML and dies silently
      (Ernest's Chrome, 30 Jul). -->
-<link rel="stylesheet" href="css/app.css?v=20260730a">
+<link rel="stylesheet" href="css/app.css?v=20260730b">
 </head>
 <body>
 
@@ -35,13 +35,18 @@
       <input class="search-input" id="reg-name" placeholder="Your full name" maxlength="60" autocomplete="name">
       <label class="field-label" style="margin-top:14px">Home site (optional)</label>
       <select class="search-input" id="reg-home"></select>
+      <label class="field-label" style="margin-top:14px">Employment</label>
+      <div class="chip-row" id="reg-emp">
+        <button type="button" class="chip active" data-emp="part">Part-timer</button>
+        <button type="button" class="chip" data-emp="full">Full-time staff</button>
+      </div>
       <label class="field-label" style="margin-top:14px">Create your 4-digit PIN</label>
       <div class="reg-pin-row">
         <input class="search-input" id="reg-pin" type="password" inputmode="numeric" maxlength="4" placeholder="PIN" autocomplete="off">
         <input class="search-input" id="reg-pin2" type="password" inputmode="numeric" maxlength="4" placeholder="Repeat PIN" autocomplete="off">
       </div>
       <p class="pin-error hidden" id="reg-pin-note">The two PINs don't match</p>
-      <p class="ab-note">You'll be added to the staff list as a part-timer, and this PIN logs you in from now on — don't share it. Your name goes on every record you save.</p>
+      <p class="ab-note">This PIN logs you in from now on — don't share it. Your name goes on every record you save.</p>
       <div class="save-bar" style="position:static;padding:16px 0 0;background:none">
         <button class="btn-primary" id="reg-submit" disabled>Register &amp; continue</button>
       </div>
@@ -81,7 +86,7 @@
     </div>
   </div>
 
-  <div class="section-label hidden" id="sec-morning-label">☀️ Morning GMV <span class="sec-hint">24-hr merchants · shoot at 10 am</span></div>
+  <div class="section-label hidden" id="sec-morning-label">☀️ Opening GMV <span class="sec-hint">24-hr merchants · shoot at 10 am</span></div>
   <div class="merchant-list" id="list-morning"></div>
 
   <div class="section-label">🌙 Closing GMV</div>
@@ -95,6 +100,7 @@
     <button class="menu-item" id="menu-review">🗓️ <span>Review previous days</span></button>
     <button class="menu-item" id="menu-addbrand">➕ <span>Add new brand</span></button>
     <button class="menu-item" id="menu-brands">🏷️ <span>Manage brands</span></button>
+    <button class="menu-item" id="menu-pin">🔒 <span>Change my PIN</span></button>
     <button class="menu-item" id="menu-logout">⏻ <span>Log out</span></button>
     <button class="menu-cancel" id="menu-cancel">Cancel</button>
   </div>
@@ -184,7 +190,7 @@
       <label class="ab-check">
         <input type="checkbox" id="ab-overnight">
         <span><b>Operates outside 10 am – 10 pm</b><br>
-        <small>e.g. 24-hour kitchens. Staff will shoot a morning baseline photo daily and the app deducts it automatically. Ticks the Overnight column in SFDC ID Map.</small></span>
+        <small>e.g. 24-hour kitchens. Staff will shoot an opening GMV photo daily and the app deducts it automatically. Ticks the Overnight column in SFDC ID Map.</small></span>
       </label>
       <div class="save-bar" style="position:static;padding:18px 0 0;background:none">
         <button class="btn-primary" id="ab-create" disabled>Create brand record</button>
@@ -210,6 +216,23 @@
     <button class="vc-btn" id="vc-orders">Save as Orders</button>
     <button class="vc-btn" id="vc-gmv">Save as Sales (S$)</button>
     <button class="vc-btn vc-cancel" id="vc-cancel">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ CHANGE PIN ============ -->
+<div class="overlay hidden" id="pinchange-overlay">
+  <div class="menu-sheet">
+    <div class="guard-title">🔒 Change my PIN</div>
+    <input class="search-input" id="pc-old" type="password" inputmode="numeric" maxlength="4" placeholder="Current PIN" autocomplete="off" style="margin-top:10px">
+    <div class="reg-pin-row" style="margin-top:10px">
+      <input class="search-input" id="pc-new" type="password" inputmode="numeric" maxlength="4" placeholder="New PIN" autocomplete="off">
+      <input class="search-input" id="pc-new2" type="password" inputmode="numeric" maxlength="4" placeholder="Repeat new PIN" autocomplete="off">
+    </div>
+    <p class="pin-error hidden" id="pc-note"></p>
+    <div class="save-bar" style="position:static;padding:14px 0 0;background:none">
+      <button class="btn-primary" id="pc-submit" disabled>Change PIN</button>
+    </div>
+    <button class="menu-cancel" id="pc-cancel" style="margin-top:10px">Cancel</button>
   </div>
 </div>
 
@@ -250,7 +273,7 @@
 
 <!-- Catalog, roster and customers load live from /api/catalog at boot —
      no merchant or staff data ships with this public repo. -->
-<script src="js/config.js?v=20260730a"></script>
-<script src="js/app.js?v=20260730a"></script>
+<script src="js/config.js?v=20260730b"></script>
+<script src="js/app.js?v=20260730b"></script>
 </body>
 </html>

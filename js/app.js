@@ -116,11 +116,11 @@ function siteMerchants(siteId) {
 }
 function channelsFor(m, siteId) {
   const ch = ['grab', 'fp', 'others', 'catering'];
-  if (siteId === 'S12') ch.push('dinein');
+  if (siteId === 'S12') ch.push('dinein', 'promodinein');
   return ch;
 }
 const CORE = ['grab', 'fp'];                      // always expanded, required
-const OPTIONAL = ['others', 'catering', 'dinein']; // collapsed, default 0
+const OPTIONAL = ['others', 'catering', 'dinein', 'promodinein']; // collapsed, default 0
 const AI_CHANNELS = ['grab', 'fp'];               // only these call the AI engine (cost control)
 
 /* ---------- native camera / photo picker ---------- */
@@ -286,6 +286,7 @@ function openRegister() {
   $('reg-pin2').value = '';
   $('reg-error').classList.add('hidden');
   $('reg-pin-note').classList.add('hidden');
+  setRegEmp('part');
   $('reg-home').innerHTML = `<option value="${esc(state.site.id)}">${esc(state.site.name)} (this site)</option>`
     + DATA.sites.filter((s) => s.id !== state.site.id)
         .map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')
@@ -296,6 +297,15 @@ function openRegister() {
 $('reg-name').oninput = updateRegBtn;
 $('reg-pin').oninput = updateRegBtn;
 $('reg-pin2').oninput = updateRegBtn;
+/* Employment choice (Ernest 30 Jul): part-timer or full-time, written to the
+   Staff tab's Part-timer column. Defaults to part-timer (the common case). */
+let regEmp = 'part';
+function setRegEmp(v) {
+  regEmp = v;
+  $('reg-emp').querySelectorAll('.chip').forEach((c) =>
+    c.classList.toggle('active', c.dataset.emp === v));
+}
+$('reg-emp').querySelectorAll('.chip').forEach((c) => c.onclick = () => setRegEmp(c.dataset.emp));
 function updateRegBtn() {
   const p1 = $('reg-pin').value, p2 = $('reg-pin2').value;
   const pinOk = /^\d{4}$/.test(p1) && p1 === p2;
@@ -312,6 +322,7 @@ async function submitRegistration(allowDuplicate) {
     const r = await fetch(`${CONFIG.apiBase}/api/staff`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, homeSite: $('reg-home').value, pin: $('reg-pin').value,
+        partTimer: regEmp !== 'full',
         site: state.site.id, allowDuplicate: !!allowDuplicate }),
     });
     const d = await r.json().catch(() => ({}));
@@ -584,12 +595,12 @@ function renderChecklist() {
   $('list-morning').innerHTML = overnight.map((m) => {
     const bm = state.baselineMeta[m.id] || {};
     const reading = baselineReading(m);
-    const st = bm.saved ? ['done', '✓ baseline saved']
+    const st = bm.saved ? ['done', '✓ Opening GMV recorded']
       : bm.inFlight ? ['pending', '⬆ saving…']
       : bm.error ? ['flagred', '❗ not saved — tap to retry']
       : reading ? ['pending', '⏳ AI reading…']
-      : baselineHasShots(m) ? ['flag', '🟡 confirm baseline']
-      : ['flag', '⚠ shoot baseline'];
+      : baselineHasShots(m) ? ['flag', '🟡 confirm opening GMV']
+      : ['flag', '⚠ Opening GMV missing'];
     return `<div class="merchant-card ${bm.error ? 'failed' : ''}" data-id="${esc(m.id)}" data-mode="baseline">
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
@@ -598,10 +609,18 @@ function renderChecklist() {
     </div>`;
   }).join('');
 
+  if (all.length === 0) {
+    $('list-evening').innerHTML = state.merchants.length
+      ? `<div class="empty-note">🏷️ All brands at this site are disabled.<br>
+        <small>Re-enable them via ☰ → Manage brands — nothing needs to be re-created.</small></div>`
+      : `<div class="empty-note">🏪 No merchants at this site yet.<br>
+        <small>Add the first one via ☰ → Add new brand — it appears here right away.</small></div>`;
+    return;
+  }
   $('list-evening').innerHTML = all.map((m) => {
     const r = state.records[m.id];
     const done = merchantDone(m);
-    let status = '<span class="m-status pending">○ pending</span>';
+    let status = '<span class="m-status pending">○ not captured</span>';
     if (r && r.inFlight) {
       status = '<span class="m-status pending">⬆ saving…</span>';
     } else if (r && saveFailed(r)) {
@@ -648,6 +667,49 @@ $('btn-menu').onclick = () => $('menu-overlay').classList.remove('hidden');
 $('menu-cancel').onclick = () => $('menu-overlay').classList.add('hidden');
 $('menu-overlay').onclick = (e) => { if (e.target === $('menu-overlay')) $('menu-overlay').classList.add('hidden'); };
 $('menu-logout').onclick = () => { $('menu-overlay').classList.add('hidden'); attemptLogout(); };
+$('menu-pin').onclick = () => { $('menu-overlay').classList.add('hidden'); openPinChange(); };
+
+/* ---------- change my PIN (Ernest 30 Jul) ---------- */
+function pcValid() {
+  const o = $('pc-old').value, n = $('pc-new').value, n2 = $('pc-new2').value;
+  const mismatch = n.length === 4 && n2.length === 4 && n !== n2;
+  const sameAsOld = n.length === 4 && o.length === 4 && n === o;
+  $('pc-note').textContent = mismatch ? "The two new PINs don't match"
+    : sameAsOld ? 'The new PIN is the same as the current one' : '';
+  $('pc-note').classList.toggle('hidden', !mismatch && !sameAsOld);
+  return /^\d{4}$/.test(o) && /^\d{4}$/.test(n) && n === n2 && n !== o;
+}
+function openPinChange() {
+  ['pc-old', 'pc-new', 'pc-new2'].forEach((id) => { $(id).value = ''; });
+  $('pc-note').classList.add('hidden');
+  $('pc-submit').disabled = true;
+  $('pc-submit').textContent = 'Change PIN';
+  $('pinchange-overlay').classList.remove('hidden');
+}
+['pc-old', 'pc-new', 'pc-new2'].forEach((id) => {
+  $(id).oninput = () => { $('pc-submit').disabled = !pcValid(); };
+});
+$('pc-cancel').onclick = () => $('pinchange-overlay').classList.add('hidden');
+$('pc-submit').onclick = async () => {
+  if (!pcValid()) return;
+  $('pc-submit').disabled = true;
+  $('pc-submit').textContent = 'Changing…';
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/staff/pin/change`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staffId: state.staff.id, oldPin: $('pc-old').value,
+        newPin: $('pc-new').value }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    $('pinchange-overlay').classList.add('hidden');
+    toast('PIN changed ✓ — use the new PIN from your next login');
+  } catch (e) {
+    $('pc-note').textContent = e.message;
+    $('pc-note').classList.remove('hidden');
+    $('pc-submit').disabled = false;
+    $('pc-submit').textContent = 'Change PIN';
+  }
+};
 $('menu-addbrand').onclick = () => { $('menu-overlay').classList.add('hidden'); openAddBrand(); };
 $('menu-review').onclick = () => { $('menu-overlay').classList.add('hidden'); openReview(); };
 $('menu-brands').onclick = () => { $('menu-overlay').classList.add('hidden'); openBrands(); };
@@ -667,7 +729,7 @@ function renderBrands() {
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
         <div class="m-tags">${m.disabled ? '<span class="tag off">DISABLED</span>' : '<span class="tag on">ACTIVE</span>'}${m.overnight ? '<span class="tag h24">24 HR</span>' : ''}</div></div>
       <div class="mb-btns">
-        <button class="mb-moon ${m.overnight ? 'on' : ''}" data-id="${esc(m.id)}" title="Operates outside 10 am – 10 pm — needs a morning GMV shot daily">🌙</button>
+        <button class="mb-moon ${m.overnight ? 'on' : ''}" data-id="${esc(m.id)}" title="Operates outside 10 am – 10 pm — needs a daily opening GMV shot">🌙</button>
         <button class="mb-toggle ${m.disabled ? 'enable' : ''}" data-id="${esc(m.id)}">${m.disabled ? 'Enable' : 'Disable'}</button>
       </div>
     </div>`).join('') : '<p class="ab-note">No brands at this site yet.</p>';
@@ -695,7 +757,7 @@ function renderBrands() {
     const next = !m.overnight;
     m.overnight = src.overnight = next || undefined;
     renderBrands();
-    toast(next ? `${m.brand} marked outside-hours 🌙 — morning GMV shot needed daily`
+    toast(next ? `${m.brand} marked outside-hours 🌙 — daily opening GMV shot needed`
                : `${m.brand} back to normal hours`);
     patchFlag(m, { overnight: next }, () => { m.overnight = src.overnight = !next || undefined; });
   });
@@ -810,7 +872,7 @@ function renderReview() {
     const parts = Object.entries(sr.channels)
       .map(([ch, c]) => `${CH_META[ch].name} ${c.orders || 0} · ${money(Number(c.gmv || 0))}`).join(' · ');
     return `<div class="merchant-card rv-base"><div class="m-kitchen">☀️</div>
-      <div class="m-info"><div class="m-name">${esc(m.brand)} — morning baseline</div>
+      <div class="m-info"><div class="m-name">${esc(m.brand)} — opening GMV</div>
         <div class="m-tags"><span class="customer-meta">${esc(parts)} · deducted that night · view only</span></div></div></div>`;
   }).join('');
 
@@ -846,6 +908,7 @@ const CH_META = {
   others:   { name: 'Others',    cls: 'other',  logo: 'O', hint: 'AIGENS / other platforms' },
   catering: { name: 'Catering',  cls: 'cater',  logo: 'C', hint: 'Catering orders' },
   dinein:   { name: 'Dine-in',   cls: 'dinein', logo: 'D', hint: 'POS screenshot' },
+  promodinein: { name: '(Promo) Dine-in', cls: 'dinein', logo: 'P', hint: 'POS screenshot' },
 };
 
 function findMerchant(mid) { return state.merchants.find((x) => x.id === mid); }
@@ -858,7 +921,7 @@ function openCapture(mid, mode, offset = 0, from = 'checklist') {
 
   $('cap-merchant').textContent = m.brand;
   $('cap-sub').textContent = `${state.site.id} · ${m.kitchen} · ${m.type}`
-    + (mode === 'baseline' ? ' · ☀️ morning baseline' : '')
+    + (mode === 'baseline' ? ' · ☀️ opening GMV' : '')
     + (offset ? ` · ✏️ editing ${dayLabel(offset)}` : '');
 
   renderStatusChips();
@@ -893,13 +956,15 @@ function renderBaselineBanner() {
   const el = $('baseline-banner');
   if (offset) { el.classList.add('hidden'); return; }   // past-day edits: plain edit, no baseline logic
   if (mode === 'baseline') {
-    el.innerHTML = `☀️ <b>${esc(m.brand)} runs 24 hours.</b> Shoot each screen now — stored as today's 10 am baseline and deducted automatically tonight. Nothing is billed from this shot.`;
+    el.innerHTML = `☀️ <b>${esc(m.brand)} runs 24 hours.</b> Shoot each screen now — stored as today's opening GMV and deducted automatically tonight. Nothing is billed from this shot.`;
     el.classList.remove('hidden');
   } else if (m.overnight) {
-    const has = baselineDone(m);
-    el.innerHTML = has
-      ? `🌙 24-hr merchant — tonight's reading auto-deducts this morning's baseline. Both photos are kept as evidence.`
-      : `⚠️ <b>No morning baseline today.</b> Tonight's reading cannot auto-deduct — this record will be flagged for supervisor review, or go back and add the baseline first.`;
+    const bm = state.baselineMeta[m.id] || {};
+    el.innerHTML = baselineDone(m)
+      ? `🌙 24-hr merchant — tonight's reading auto-deducts this morning's opening GMV. Both photos are kept as evidence.`
+      : bm.inFlight
+      ? `⬆ <b>Opening GMV is saving right now.</b> Give it a moment — the save button unlocks as soon as it lands.`
+      : `⚠️ <b>No opening GMV today.</b> Tonight's reading cannot auto-deduct — it will be flagged for supervisor review. You can also go back and shoot the opening GMV first.`;
     el.classList.remove('hidden');
   } else {
     el.classList.add('hidden');
@@ -990,9 +1055,16 @@ function extrasHTML(ch, val, rec) {
     ? `<button class="extras-expand" data-xexpand="1">${done.length} order${done.length > 1 ? 's' : ''} added · ${money(extrasTotals(val).gmv)} — view all ›</button>`
       + open.map(([e, i]) => rowHTML(e, i)).join('')
     : list.map((e, i) => rowHTML(e, i)).join('');
+  /* Platform asymmetry (Ernest 29 Jul): Grab's Net sales excludes BOTH
+     locker orders and out-for-delivery orders; foodpanda's All already
+     includes out-for-delivery — adding those would double-bill. */
+  const head = ch === 'grab' ? '⏳ Not in the summary yet' : '⏳ Pending rider pickup';
+  const hint = ch === 'grab'
+    ? "In the locker or out for delivery? Grab's Net sales does not include those yet — shoot each order's details page, one photo per order. Shoot the summary first."
+    : "Waiting for a rider? Shoot each order's details page — one photo per order. Orders already out for delivery ARE counted in foodpanda's All, so don't add them.";
   return `<div class="extras-sec">
-    <div class="extras-head">⏳ Pending rider pickup
-      <span class="extras-hint">Order done but not in the summary yet? Shoot its order-details page — one photo per order. Shoot the summary first, then the locker.</span></div>
+    <div class="extras-head">${head}
+      <span class="extras-hint">${hint}</span></div>
     ${body}
     <button class="extras-add" data-xadd="1">＋ Add pending order photos</button>
   </div>`;
@@ -1044,18 +1116,20 @@ function channelBodyHTML(ch, val, base, mode) {
          : 'This channel is manual — type the numbers, and attach a photo as evidence.'}</div>`;
   let extra = '';
   if (mode === 'baseline' && channelHasData(val)) {
-    extra = `<div class="deduct-box">☀️ Stored as today's baseline — deducted tonight. Not billed.</div>`;
+    extra = `<div class="deduct-box">☀️ Stored as today's opening GMV — deducted tonight. Not billed.</div>`;
   } else if (base && channelHasData(val)) {
     const x = extrasTotals(val);
     const bOrders = Number(base.finalOrders ?? base.orders ?? 0);
     const bGmv = Number(base.finalGmv ?? base.gmv ?? 0);
     const bo = (o ?? 0) + x.n - bOrders;
     const bg = (g ?? 0) + x.gmv - bGmv;
-    extra = `<div class="deduct-box">☀️ Baseline this morning: ${bOrders} orders · ${money(bGmv)}<br>
+    extra = `<div class="deduct-box">☀️ Opening GMV this morning: ${bOrders} orders · ${money(bGmv)}<br>
       🧾 <b>Billable 10 am–10 pm: ${bo} orders · ${money(bg)}</b></div>`;
   }
   const mism = val.mismatch ? `<div class="mismatch">⚠ ${esc(val.mismatch)}</div>` : '';
-  const extras = mode === 'evening' && !state.current.offset && AI_CHANNELS.includes(ch)
+  /* Pending-pickup must stay addable AFTER saving and in Review edits too —
+     field feedback 30 Jul: the section vanished once the day was submitted. */
+  const extras = mode === 'evening' && AI_CHANNELS.includes(ch)
     ? extrasHTML(ch, val, curRec()) + totalStripHTML(ch, val) : '';
   return fields + mism + extra + photo + extras;
 }
@@ -1192,9 +1266,15 @@ function runExtraction(ch, photoUrl) {
 
   const rec = ctx.mode === 'baseline' ? null : recordsFor(ctx.offset)[ctx.m.id];
   if (rec) rec.pending = (rec.pending || 0) + 1;
-  writeVal(ctx, ch, { ...(readVal(ctx, ch) || {}), photoUrl, photoDirty: true,
-    photoLink: undefined, pendingAI: true });
-  const gen = (readVal(ctx, ch) || {}).gen || 0;   // ✕ Remove bumps this
+  const prevVal = readVal(ctx, ch) || {};
+  // gen bump: a retake must invalidate any older in-flight read, or its stale
+  // settle would resurrect the superseded photo/link/numbers (review 29 Jul).
+  // _dirty: after a saved opening GMV, a retake must re-arm "Update & save" —
+  // the piggyback's photoDirty:false alone no longer implies "nothing to post".
+  writeVal(ctx, ch, { ...prevVal, photoUrl, photoDirty: true,
+    photoLink: undefined, photoId: undefined, pendingAI: true,
+    _dirty: true, gen: (prevVal.gen || 0) + 1 });
+  const gen = (readVal(ctx, ch) || {}).gen || 0;   // ✕ Remove also bumps this
   if (viewingCtx(ctx)) { renderChannelCards(); updateSaveBtn(); }
 
   const settle = (patch) => {
@@ -1218,12 +1298,21 @@ function runExtraction(ch, photoUrl) {
     if (ctx.mode === 'baseline' && !viewingCtx(ctx) && !$('view-checklist').classList.contains('hidden')) renderChecklist();
   };
 
+  /* Piggyback storage (30 Jul save-latency fix): the photo travels to the
+     server for reading anyway — the server stores it to Drive in the same
+     request and returns the link, so the save later is kilobytes, not MBs. */
+  const isBaseline = ctx.mode === 'baseline';
+  const sdate = isBaseline ? state.salesDate : dateForOffset(ctx.offset || 0);
+  const kindBase = ch === 'grab' ? 'Grab Photo' : 'Foodpanda Photo';
   fetch(`${CONFIG.apiBase}/api/extract`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image: photoUrl, channel: ch,
-      mode: ctx.mode === 'baseline' ? 'baseline' : 'closing',
-      brand: ctx.m.brand, aigens: !!ctx.m.aigens }),
+      mode: isBaseline ? 'baseline' : 'closing',
+      brand: ctx.m.brand, aigens: !!ctx.m.aigens,
+      recordId: recordIdFor(ctx.m, isBaseline ? 'baseline' : 'closing', sdate),
+      salesDate: sdate,
+      photoKind: isBaseline ? kindBase.replace(' Photo', ' Baseline Photo') : kindBase }),
   })
     .then(async (r) => {
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
@@ -1238,6 +1327,7 @@ function runExtraction(ch, photoUrl) {
         conf: d.confidence, screen: d.screen_summary,
         mismatch: notes.join(' · ') || undefined,
         zero: d.zero_sales,
+        ...(d.photoLink ? { photoLink: d.photoLink, photoId: d.photoId, photoDirty: false } : {}),
       });
     })
     .catch((e) => settle({ orders: undefined, gmv: undefined, conf: 'low', screen: '',
@@ -1261,7 +1351,10 @@ function runExtraExtraction(ctx, ch, entry) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image: entry.photoUrl, channel: ch, mode: 'closing',
-      shot: 'single_order', brand: ctx.m.brand }),
+      shot: 'single_order', brand: ctx.m.brand,
+      recordId: recordIdFor(ctx.m, 'closing', dateForOffset(ctx.offset || 0)),
+      salesDate: dateForOffset(ctx.offset || 0),
+      photoKind: ch === 'grab' ? 'Grab Extra' : 'FP Extra' }),
   })
     .then(async (r) => {
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
@@ -1269,6 +1362,7 @@ function runExtraExtraction(ctx, ch, entry) {
     })
     .then((d) => apply({ aiGmv: d.gmv ?? null, conf: d.confidence,
       orderRef: (d.order_ref || '').trim(),
+      ...(d.photoLink ? { photoLink: d.photoLink, photoId: d.photoId, photoDirty: false } : {}),
       aiNote: d.wrong_channel ? `looks like ${d.platform}, not ${CH_META[ch].name}` : '' }))
     .catch((e) => apply({ aiGmv: null, conf: 'low', aiFail: true,
       aiNote: `AI reading failed (${e.message}) — type the amount from the photo` }));
@@ -1447,13 +1541,13 @@ function updateSaveBtn() {
     const meta = state.baselineMeta[m.id] || {};
     const settled = baselineSettled(m.id);
     const reading = baselineReading(m);
-    if (meta.inFlight) { btn.disabled = true; btn.textContent = '⬆ Saving baseline…'; }
-    else if (meta.error) { btn.disabled = false; btn.textContent = '❗ Retry baseline save'; }
-    else if (meta.saved && !baselineDirty(m.id)) { btn.disabled = false; btn.textContent = 'Baseline saved ✓ — back to list'; }
+    if (meta.inFlight) { btn.disabled = true; btn.textContent = '⬆ Saving opening GMV…'; }
+    else if (meta.error) { btn.disabled = false; btn.textContent = '❗ Retry opening GMV save'; }
+    else if (meta.saved && !baselineDirty(m.id)) { btn.disabled = false; btn.textContent = 'Opening GMV recorded ✓ — back to list'; }
     else if (settled.length) {
       btn.disabled = false;
-      btn.textContent = meta.saved ? 'Update baseline & save'
-        : `Confirm baseline & save${settled.length < CORE.length ? ' (partial)' : ''}`;
+      btn.textContent = meta.saved ? 'Update opening GMV & save'
+        : `Confirm opening GMV & save${settled.length < CORE.length ? ' (partial)' : ''}`;
     }
     else if (reading) { btn.disabled = true; btn.textContent = 'Reading… hang on a moment'; }
     else { btn.disabled = true; btn.textContent = 'Shoot the screens to start'; }
@@ -1461,8 +1555,13 @@ function updateSaveBtn() {
   }
   const rec = curRec();
   if (rec.inFlight) { btn.disabled = true; btn.textContent = '⬆ Saving…'; return; }
+  // Hold tonight's save while this merchant's opening GMV is mid-save: letting
+  // it through would briefly write a false NO_BASELINE flag (review 29 Jul).
+  if (!offset && m.overnight && state.baselineMeta[m.id]?.inFlight) {
+    btn.disabled = true; btn.textContent = 'Opening GMV saving… one moment'; return;
+  }
   const blockers = rec.status === 'Operated' ? extrasBlockers(rec) : [];
-  if (!offset && blockers.length) { btn.disabled = true; btn.textContent = blockers[0]; return; }
+  if (blockers.length) { btn.disabled = true; btn.textContent = blockers[0]; return; }
   if (rec.status === 'Operated' && invalidFields(rec)) {
     btn.disabled = true; btn.textContent = 'Fix the highlighted numbers'; return;
   }
@@ -1588,8 +1687,7 @@ async function saveRecord(mid) {
       adoptLinks(rec, resp || {});
       if (rec.status !== 'Operated') rec.channels = {};
       if (resp && resp.billing === 'NO_BASELINE') {
-        const why = (resp.billingNotes || []).find((n) => n.toLowerCase().includes('baseline'));
-        toast(`${m.brand} saved — ⚠ ${why || 'no morning baseline'} · flagged for supervisor`);
+        toast(`${m.brand} saved — ⚠ no opening GMV this morning · flagged for supervisor`);
       }
       else if (resp && resp.warnings && resp.warnings.length) toast(`${m.brand} saved — ⚠ ${resp.warnings[0]}`);
       else toast(`${m.brand} saved ✓`);
@@ -1631,7 +1729,7 @@ async function saveAmend(mid, offset, from) {
     adoptLinks(rec, resp || {});
     if (rec.status !== 'Operated') rec.channels = {};
     toast(`${m.brand} — ${dayLabel(offset)} saved ✓, audit logged`
-      + (resp.billing === 'NO_BASELINE' ? ' · ⚠ no morning baseline that day' : ''));
+      + (resp.billing === 'NO_BASELINE' ? ' · ⚠ no opening GMV that day' : ''));
     if (from === 'review') { renderReview(); show('view-review'); }
     else { renderChecklist(); show('view-checklist'); }
   } catch (e) {
@@ -1665,15 +1763,18 @@ async function saveBaseline(mid) {
   if (!Object.keys(channels).length) { toast('Shoot at least one screen first'); return; }
   meta.inFlight = true;
   meta.error = null;
-  updateSaveBtn();
+  // Non-blocking (supervisor feedback 30 Jul): head back to the list right
+  // away — the morning card shows ⬆ saving… and flips ✓/❗ when the server answers.
+  const onBaselineView = !$('view-capture').classList.contains('hidden')
+    && state.current && state.current.mode === 'baseline' && state.current.m.id === m.id;
+  if (onBaselineView) { renderChecklist(); show('view-checklist'); }
+  else if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
 
   const finish = (err, resp) => {
     meta.inFlight = false;
     if (err) {
       meta.error = err;
-      toast(`❗ ${m.brand} baseline NOT saved — ${err}. Tap the red card to retry.`);
-      if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
-      updateSaveBtn();
+      toast(`❗ ${m.brand} opening GMV NOT saved — ${err}. Tap the red card to retry.`);
     } else {
       meta.saved = true; meta.error = null;
       Object.entries(resp.photoLinks || {}).forEach(([ch, link]) => {
@@ -1681,9 +1782,15 @@ async function saveBaseline(mid) {
         if (b && link) { b.photoLink = link; b.photoDirty = false; b.photoUrl = undefined; b._dirty = false; }
       });
       Object.values(sent).forEach((b) => { b._dirty = false; });
-      toast(`${m.brand} baseline saved ✓ — deducted automatically tonight`);
-      renderChecklist();
-      show('view-checklist');
+      toast(`${m.brand} opening GMV recorded ✓ — deducted automatically tonight`);
+    }
+    if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
+    else {
+      updateSaveBtn();
+      // If they're already inside tonight's capture for this merchant, refresh
+      // the banner so "saving right now" flips to the deduct message.
+      if (state.current && state.current.m.id === mid
+          && !$('view-capture').classList.contains('hidden')) renderBaselineBanner();
     }
   };
 
@@ -1769,7 +1876,7 @@ function attemptLogout() {
   const risks = logoutRisks();
   if (!risks.length) { logout(); return; }
   $('guard-list').textContent = risks.map((u) =>
-    `${u.m.kitchen} ${u.m.brand}${u.kind === 'baseline' ? ' (baseline)' : u.kind === 'draft' ? ' (not confirmed yet — open it and confirm)' : ''}`
+    `${u.m.kitchen} ${u.m.brand}${u.kind === 'baseline' ? ' (opening GMV)' : u.kind === 'draft' ? ' (not confirmed yet — open it and confirm)' : ''}`
   ).join('  ·  ');
   $('guard-overlay').classList.remove('hidden');
 }
