@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#B01E2E">
 <title>Smart GMV</title>
 <!-- ?v= pairs the HTML with matching assets — bump it on EVERY deploy, or a
      browser holding a cached copy mixes old JS with new HTML and dies silently
      (Ernest's Chrome, 30 Jul). -->
-<link rel="stylesheet" href="css/app.css?v=20260730b">
+<link rel="stylesheet" href="css/app.css?v=20260730c">
 </head>
 <body>
 
@@ -50,7 +50,7 @@
       <div class="save-bar" style="position:static;padding:16px 0 0;background:none">
         <button class="btn-primary" id="reg-submit" disabled>Register &amp; continue</button>
       </div>
-      <p class="pin-error hidden" id="reg-error"></p>
+      <p class="pin-error hidden" id="reg-error" role="alert"></p>
     </div>
     <div class="login-step hidden" id="login-step-pin">
       <button class="back-link" data-back="staff">‹ Not you?</button>
@@ -58,7 +58,7 @@
       <p class="pin-sub hidden" id="pin-sub"></p>
       <div class="pin-dots" id="pin-dots"><i></i><i></i><i></i><i></i></div>
       <div class="pin-pad" id="pin-pad"></div>
-      <p class="pin-error hidden" id="pin-error">Wrong PIN — try again</p>
+      <p class="pin-error hidden" id="pin-error" role="alert">Wrong PIN — try again</p>
     </div>
   </div>
 </div>
@@ -109,7 +109,7 @@
 <!-- ============ REVIEW VIEW ============ -->
 <div class="view hidden" id="view-review">
   <header class="app-header">
-    <button class="icon-btn" id="btn-review-back">‹</button>
+    <button class="icon-btn" id="btn-review-back" aria-label="Back">‹</button>
     <div class="header-center">
       <div class="header-site">Review sales</div>
       <div class="header-meta" id="rv-sub"></div>
@@ -125,7 +125,7 @@
 <!-- ============ MANAGE BRANDS VIEW ============ -->
 <div class="view hidden" id="view-brands">
   <header class="app-header">
-    <button class="icon-btn" id="btn-brands-back">‹</button>
+    <button class="icon-btn" id="btn-brands-back" aria-label="Back">‹</button>
     <div class="header-center">
       <div class="header-site">Manage brands</div>
       <div class="header-meta" id="mb-sub"></div>
@@ -141,7 +141,7 @@
 <!-- ============ CAPTURE VIEW ============ -->
 <div class="view hidden" id="view-capture">
   <header class="app-header">
-    <button class="icon-btn" id="btn-capture-back">‹</button>
+    <button class="icon-btn" id="btn-capture-back" aria-label="Back">‹</button>
     <div class="header-center">
       <div class="header-site" id="cap-merchant">Merchant</div>
       <div class="header-meta" id="cap-sub">Kitchen</div>
@@ -165,7 +165,7 @@
 <!-- ============ ADD BRAND VIEW ============ -->
 <div class="view hidden" id="view-addbrand">
   <header class="app-header">
-    <button class="icon-btn" id="btn-addbrand-back">‹</button>
+    <button class="icon-btn" id="btn-addbrand-back" aria-label="Back">‹</button>
     <div class="header-center">
       <div class="header-site">Add new brand</div>
       <div class="header-meta" id="ab-sub">Creates a new SFDC ID Map record</div>
@@ -203,14 +203,14 @@
 <div class="overlay hidden" id="viewer-overlay">
   <div class="viewer-top">
     <span>Draw a box around the correct number</span>
-    <button class="viewer-close" id="viewer-close">✕</button>
+    <button class="viewer-close" id="viewer-close" aria-label="Close photo viewer">✕</button>
   </div>
   <div class="viewer-stage" id="viewer-stage">
     <img id="viewer-img" alt="evidence photo" draggable="false">
     <div id="viewer-boxes"></div>
     <div id="rubber-band" class="rubber-band hidden"></div>
   </div>
-  <div class="viewer-hint" id="viewer-hint">Drag on the photo to box the correct number, then type it in. Your marks teach the AI over time.</div>
+  <div class="viewer-hint" id="viewer-hint">Drag on the photo to box the correct number, then type it in. Double-tap to zoom.</div>
   <div class="viewer-choice hidden" id="viewer-choice">
     <input class="search-input vc-input" id="vc-input" inputmode="decimal" placeholder="Type the number you boxed…">
     <button class="vc-btn" id="vc-orders">Save as Orders</button>
@@ -223,12 +223,14 @@
 <div class="overlay hidden" id="pinchange-overlay">
   <div class="menu-sheet">
     <div class="guard-title">🔒 Change my PIN</div>
-    <input class="search-input" id="pc-old" type="password" inputmode="numeric" maxlength="4" placeholder="Current PIN" autocomplete="off" style="margin-top:10px">
-    <div class="reg-pin-row" style="margin-top:10px">
+    <label class="field-label" style="margin-top:12px">Current PIN</label>
+    <input class="search-input" id="pc-old" type="password" inputmode="numeric" maxlength="4" placeholder="4 digits" autocomplete="off">
+    <label class="field-label" style="margin-top:12px">New PIN — enter it twice</label>
+    <div class="reg-pin-row">
       <input class="search-input" id="pc-new" type="password" inputmode="numeric" maxlength="4" placeholder="New PIN" autocomplete="off">
       <input class="search-input" id="pc-new2" type="password" inputmode="numeric" maxlength="4" placeholder="Repeat new PIN" autocomplete="off">
     </div>
-    <p class="pin-error hidden" id="pc-note"></p>
+    <p class="pin-error hidden" id="pc-note" role="alert"></p>
     <div class="save-bar" style="position:static;padding:14px 0 0;background:none">
       <button class="btn-primary" id="pc-submit" disabled>Change PIN</button>
     </div>
@@ -269,11 +271,11 @@
 </div>
 
 <!-- ============ TOAST ============ -->
-<div class="toast hidden" id="toast"></div>
+<div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 
 <!-- Catalog, roster and customers load live from /api/catalog at boot —
      no merchant or staff data ships with this public repo. -->
-<script src="js/config.js?v=20260730b"></script>
-<script src="js/app.js?v=20260730b"></script>
+<script src="js/config.js?v=20260730c"></script>
+<script src="js/app.js?v=20260730c"></script>
 </body>
 </html>

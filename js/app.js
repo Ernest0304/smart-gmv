@@ -127,6 +127,10 @@ const AI_CHANNELS = ['grab', 'fp'];               // only these call the AI engi
 const fileInput = document.createElement('input');
 fileInput.type = 'file';
 fileInput.accept = 'image/*';
+// Straight to the camera (Ernest 29 Jul): the main slot's real-world use is a
+// live shot of the tablet in front of you — the chooser sheet cost ~50 extra
+// taps a night. The extras picker below keeps gallery multi-select.
+fileInput.setAttribute('capture', 'environment');
 fileInput.style.display = 'none';
 document.body.appendChild(fileInput);
 let pendingChannel = null;
@@ -139,7 +143,15 @@ fileInput.onchange = () => {
   reader.onload = () => downscale(reader.result, 1600, 0.85).then((jpeg) => runExtraction(ch, jpeg));
   reader.readAsDataURL(file);
 };
-function openPicker(ch) { pendingChannel = ch; fileInput.click(); }
+function openPicker(ch) {
+  pendingChannel = ch;
+  // First shot goes straight to the camera; a RETAKE may need the gallery
+  // (tablet already off, correct shot sitting in the camera roll).
+  const cur = channelValue(ch);
+  if (cur && (cur.photoUrl || cur.photoLink)) fileInput.removeAttribute('capture');
+  else fileInput.setAttribute('capture', 'environment');
+  fileInput.click();
+}
 
 /* Pending-pickup orders: multi-select picker so staff can burst-shoot all the
    locker orders in the native camera, then add them in one go. */
@@ -205,7 +217,9 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.remove('hidden');
   clearTimeout(t._h);
-  t._h = setTimeout(() => t.classList.add('hidden'), 2400);
+  // Long failure messages need reading time (~55ms/char, 2.6–8s); tap to dismiss.
+  t._h = setTimeout(() => t.classList.add('hidden'), Math.min(8000, Math.max(2600, msg.length * 55)));
+  t.onclick = () => { clearTimeout(t._h); t.classList.add('hidden'); };
 }
 
 /* ---------- login ---------- */
@@ -361,6 +375,18 @@ function paintPin() {
   [...$('pin-dots').children].forEach((d, i) => d.classList.toggle('filled', i < state.pin.length));
 }
 let pinChecking = false;
+function setPinBusy(b) {
+  // The pad swallows keys while checking — say so, or a slow network reads
+  // as a dead keypad to a first-day part-timer.
+  pinChecking = b;
+  const el = $('pin-sub');
+  if (b) {
+    el.innerHTML = '<span class="spinner sm"></span> Checking…';
+    el.classList.remove('hidden');
+  } else if (el.textContent.includes('Checking')) {
+    el.classList.add('hidden');
+  }
+}
 function renderPinPad() {
   const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
   $('pin-pad').innerHTML = keys.map((k) => k === '' ? '<span></span>' : `<button class="pin-key" data-k="${k}">${k}</button>`).join('');
@@ -406,7 +432,7 @@ const pinFail = (msg) => {
 /* First-login claim: writes the chosen PIN to this person's blank Staff-tab
    cell. First claim wins — a second device gets a clear 409. */
 async function claimPin() {
-  pinChecking = true;
+  setPinBusy(true);
   try {
     const r = await fetch(`${CONFIG.apiBase}/api/staff/pin`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -432,13 +458,13 @@ async function claimPin() {
     paintPinTitle();
     pinFail(`Could not save the PIN (${e.message}) — try again`);
   } finally {
-    pinChecking = false;
+    setPinBusy(false);
   }
 }
 /* PINs are checked by the server against the Staff tab. The app never sees
    anyone's stored PIN; a blank cell routes to the create-PIN flow instead. */
 async function verifyPin() {
-  pinChecking = true;
+  setPinBusy(true);
   try {
     const r = await fetch(`${CONFIG.apiBase}/api/staff/verify`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -463,7 +489,7 @@ async function verifyPin() {
   } catch (e) {
     pinFail(`Could not verify (${e.message}) — try again`);
   } finally {
-    pinChecking = false;
+    setPinBusy(false);
   }
 }
 document.querySelectorAll('.back-link').forEach((b) => b.onclick = () => loginStep(b.dataset.back));
@@ -514,7 +540,19 @@ function serverRecToLocal(sr) {
 /* Pull today's already-saved rows from the sheet so a reloaded phone (or a
    second device) sees ✓ instead of re-capturing — re-captures would still be
    in-place updates (deterministic ids), but staff shouldn't redo the round. */
+let hydrateSeq = 0;
 async function hydrateToday() {
+  const seq = ++hydrateSeq;   // logout/login during a slow fetch must not clear the new session's notice
+  state.hydrating = true;
+  try { await hydrateTodayInner(); }
+  finally {
+    if (seq === hydrateSeq) {
+      state.hydrating = false;
+      if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
+    }
+  }
+}
+async function hydrateTodayInner() {
   try {
     const r = await fetch(`${CONFIG.apiBase}/api/records/today?site=${state.site.id}&date=${state.salesDate}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -585,7 +623,8 @@ function renderChecklist() {
   const frac = all.length ? doneCount / all.length : 0;
   $('ring-fg').style.strokeDashoffset = 194.8 * (1 - frac);
   $('prog-sub').textContent =
-    failed ? `❗ ${failed} record${failed > 1 ? 's' : ''} not saved — tap the red card to retry`
+    state.hydrating ? '⏳ Checking the server for records already saved today…'
+    : failed ? `❗ ${failed} record${failed > 1 ? 's' : ''} not saved — tap the red card to retry`
     : state.hydrateError ? '⚠ Could not check the server for saved records — reload before capturing'
     : all.length === 0 ? 'No delivery merchants at this site yet'
     : doneCount === all.length ? 'All done — great round! 🎉'
@@ -652,6 +691,7 @@ function renderChecklist() {
 }
 $('btn-logout').onclick = () => attemptLogout();
 function logout() {
+  state.staff = null;   // else beforeunload guards a session the user discarded
   state.pin = '';
   state.pinFirst = '';
   state.history = {};
@@ -1082,8 +1122,8 @@ function channelBodyHTML(ch, val, base, mode) {
   const o = val.finalOrders ?? val.orders;
   const g = val.finalGmv ?? val.gmv;
   const fields = `<div class="reading-fields full">
-      <div class="rf ${val.editedOrders ? 'edited' : ''} ${val.invalidOrders ? 'bad' : ''}"><label>Orders</label><input inputmode="numeric" placeholder="0" value="${o !== undefined ? Number(o) : ''}" data-f="orders"></div>
-      <div class="rf ${val.editedGmv ? 'edited' : ''} ${val.invalidGmv ? 'bad' : ''}"><label>Sales (S$)</label><input inputmode="decimal" placeholder="0.00" value="${g !== undefined ? Number(g).toFixed(2) : ''}" data-f="gmv"></div>
+      <div class="rf ${val.editedOrders ? 'edited' : ''} ${val.invalidOrders ? 'bad' : ''}"><label for="rf-${ch}-o">Orders</label><input id="rf-${ch}-o" inputmode="numeric" placeholder="0" value="${o !== undefined ? Number(o) : ''}" data-f="orders"></div>
+      <div class="rf ${val.editedGmv ? 'edited' : ''} ${val.invalidGmv ? 'bad' : ''}"><label for="rf-${ch}-g">Sales (S$)</label><input id="rf-${ch}-g" inputmode="decimal" placeholder="0.00" value="${g !== undefined ? Number(g).toFixed(2) : ''}" data-f="gmv"></div>
     </div>`;
   const aiChannel = AI_CHANNELS.includes(ch);
   const statusLine = !aiChannel
@@ -1110,7 +1150,7 @@ function channelBodyHTML(ch, val, base, mode) {
     ? `<div class="photo-row"><span class="photo-chip">🗂️ Photo on record</span>
         <div class="ai-note-col"><span class="screen-note">Saved to Drive earlier — retake only if it was wrong.</span></div>
         <div class="photo-btns"><button class="retake">Retake</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
-    : `<div class="photo-slot"><span class="cam">📷</span> Snap or upload ${esc(CH_META[ch].name)} screen</div>
+    : `<div class="photo-slot"><span class="cam">📷</span> Snap the ${esc(CH_META[ch].name)} screen</div>
        <div class="no-photo-note">${aiChannel
          ? 'You can type the numbers first — but a photo is required as evidence before saving.'
          : 'This channel is manual — type the numbers, and attach a photo as evidence.'}</div>`;
@@ -1378,6 +1418,10 @@ function openViewer(ch) {
   if (!src) return;
   state.viewer = { ch, pendingBox: null };
   const img = $('viewer-img');
+  img.style.transform = '';
+  img.dataset.zoom = '';
+  $('viewer-boxes').style.display = '';
+  $('viewer-hint').textContent = 'Drag on the photo to box the correct number, then type it in. Double-tap to zoom.';
   img.onload = placeViewerBoxes;
   img.src = src;
   $('viewer-choice').classList.add('hidden');
@@ -1417,6 +1461,7 @@ window.addEventListener('resize', () => {
   stage.addEventListener('pointerdown', (e) => {
     if ($('viewer-overlay').classList.contains('hidden')) return;
     if (!$('viewer-choice').classList.contains('hidden')) return;
+    if ($('viewer-img').dataset.zoom === '1') return;   // zoomed = look mode, no drawing
     const r = stage.getBoundingClientRect();
     start = { x: e.clientX - r.left, y: e.clientY - r.top };
     band.style.left = `${start.x}px`;
@@ -1455,6 +1500,41 @@ window.addEventListener('resize', () => {
     setTimeout(() => $('vc-input').focus(), 50);
   });
 })();
+/* Double-tap the photo to toggle a 2.5x zoom at the tap point — tablet digits
+   are unreadable at fit-to-screen. While zoomed: look only (marks hidden,
+   drawing off); double-tap again to zoom out and draw. */
+(() => {
+  const stage = $('viewer-stage');
+  let down = null, last = { t: 0, x: 0, y: 0 };
+  stage.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; }, true);
+  stage.addEventListener('pointerup', (e) => {
+    if (!$('viewer-choice').classList.contains('hidden')) return;   // typing a value — no zoom
+    const wasTap = down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 12;
+    down = null;
+    if (!wasTap) { last.t = 0; return; }
+    const now = Date.now();
+    const isDouble = now - last.t < 350 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 48;
+    last = isDouble ? { t: 0, x: 0, y: 0 } : { t: now, x: e.clientX, y: e.clientY };
+    if (!isDouble) return;
+    const img = $('viewer-img');
+    if (img.dataset.zoom === '1') {
+      img.style.transform = '';
+      img.dataset.zoom = '';
+      $('viewer-boxes').style.display = '';
+      $('viewer-hint').textContent = 'Drag on the photo to box the correct number, then type it in. Double-tap to zoom.';
+    } else {
+      const r = img.getBoundingClientRect();
+      img.style.transformOrigin =
+        `${((e.clientX - r.left) / r.width) * 100}% ${((e.clientY - r.top) / r.height) * 100}%`;
+      img.style.transform = 'scale(2.5)';
+      img.dataset.zoom = '1';
+      $('viewer-boxes').style.display = 'none';
+      $('rubber-band').classList.add('hidden');
+      $('viewer-hint').textContent = '🔍 Zoomed — double-tap to zoom out and draw a box.';
+    }
+  });
+})();
+
 function applyMark(kind) {
   const { ch, pendingBox } = state.viewer || {};
   const raw = $('vc-input').value.trim().replace(/[^0-9.]/g, '');
@@ -1982,3 +2062,52 @@ $('ab-create').onclick = async () => {
 renderPinPad();
 show('view-login');
 loadCatalog();
+
+/* ---------- OS back gesture: act like in-app back, never nuke the night ----------
+   The app is a hidden-class SPA — without this, Android's back gesture leaves
+   the site and destroys every unsaved capture in memory. Trap pattern: one
+   sentinel history entry; each back pop closes the topmost layer and re-arms.
+   Leaving is still possible via browser UI; beforeunload guards unsaved work. */
+function closeTopLayer() {
+  const overlays = [
+    ['viewer-overlay', 'viewer-close'], ['pinchange-overlay', 'pc-cancel'],
+    ['guard-overlay', 'guard-cancel'], ['convert-overlay', 'convert-cancel'],
+    ['dup-overlay', 'dup-cancel'], ['menu-overlay', 'menu-cancel'],
+  ];
+  for (const [ov, btn] of overlays) {
+    const el = $(ov);
+    if (el && !el.classList.contains('hidden')) {
+      // Inside the viewer, the number panel is its own layer: back should
+      // cancel the panel, not throw away the drawn box with the whole viewer.
+      if (ov === 'viewer-overlay' && !$('viewer-choice').classList.contains('hidden')) {
+        $('vc-cancel').click();
+        return true;
+      }
+      $(btn).click();
+      return true;
+    }
+  }
+  if (!$('view-capture').classList.contains('hidden')) { $('btn-capture-back').click(); return true; }
+  if (!$('view-review').classList.contains('hidden')) { $('btn-review-back').click(); return true; }
+  if (!$('view-brands').classList.contains('hidden')) { $('btn-brands-back').click(); return true; }
+  if (!$('view-addbrand').classList.contains('hidden')) { $('btn-addbrand-back').click(); return true; }
+  if (!$('view-login').classList.contains('hidden')) {
+    const step = [...document.querySelectorAll('#view-login .login-step')]
+      .find((s) => !s.classList.contains('hidden'));
+    const bl = step && step.querySelector('.back-link');
+    if (bl) { bl.click(); return true; }
+  }
+  return false;   // checklist or site-picker root — stay put
+}
+history.replaceState({ smartgmv: 'root' }, '');
+history.pushState({ smartgmv: 'trap' }, '');
+window.addEventListener('popstate', () => {
+  closeTopLayer();
+  history.pushState({ smartgmv: 'trap' }, '');
+});
+window.addEventListener('beforeunload', (e) => {
+  if (state.staff && typeof logoutRisks === 'function' && logoutRisks().length) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});

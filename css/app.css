@@ -371,3 +371,51 @@ body {
 .empty-note { background: #fff; border-radius: 14px; padding: 30px 18px; text-align: center;
   color: #555; font-size: 15px; line-height: 1.7; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
 .empty-note small { color: #999; }
+
+/* ============ Night-legibility & touch pack (29 Jul UI/UX audit) ============
+   Cascade overrides — grouped here so the whole pack is one reviewable block
+   and one revert. Rationale: dim facilities, 30% brightness, wet thumbs. */
+:root { --ink-3: #6E737C; --amber: #8A5200; }
+.btn-primary:disabled { background: #E8E6E1; color: #5A5E66; }   /* blocker text must be READABLE */
+.rf label { font-size: 12px; }
+.ch-hint { font-size: 12.5px; }
+.extras-hint { font-size: 13px; }
+.ab-check small { font-size: 13px; }
+::placeholder { color: #8A8F97; opacity: 1; }
+
+/* touch targets (44px where layout allows, ≥40px otherwise) */
+.icon-btn { width: 44px; height: 44px; }
+.viewer-close { width: 44px; height: 44px; }
+.back-link { padding: 10px 0; }
+.chip { padding: 12px 16px; }
+.mb-toggle, .mb-moon { min-width: 42px; min-height: 42px; }
+.x-del { padding: 12px 10px; margin: -8px -2px -8px 2px; }
+.photo-btns { gap: 10px; }
+.retake, .ch-remove { padding: 10px 14px; background: var(--paper); border-radius: 10px; font-size: 13px; }
+
+/* pressed feedback — tap highlight is globally disabled, so every control
+   needs its own sub-100ms acknowledgment */
+.btn-primary:active:not(:disabled), .vc-btn:active, .extras-add:active,
+.retake:active, .x-del:active { transform: scale(.97); filter: brightness(.9); }
+.chip:active, .menu-item:active, .icon-btn:active, .menu-cancel:active,
+.mb-toggle:active, .mb-moon:active, .back-link:active { filter: brightness(.92); }
+
+/* the two cells that become invoices must show where the caret is */
+.rf:focus-within { box-shadow: 0 0 0 2px rgba(176,30,46,.16); border-radius: 10px; }
+.x-amt { font-size: 16px; }
+
+/* toasts: wrap, readable duration handled in JS, above every overlay */
+.toast { white-space: normal; max-width: calc(100vw - 32px); width: max-content;
+  text-align: center; z-index: 100; border-radius: 16px; line-height: 1.45; }
+
+/* evidence-photo zoom */
+#viewer-img { transition: transform .18s ease-out; }
+
+button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
+.photo-slot, .thumb, .toast, .ab-check, .overlay, .extra-row { touch-action: manipulation; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-fg { transition: none; }
+  .spinner { animation-duration: 1.6s; }
+  #viewer-img { transition: none; }
+}
