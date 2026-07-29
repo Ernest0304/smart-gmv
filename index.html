@@ -8,7 +8,7 @@
 <!-- ?v= pairs the HTML with matching assets — bump it on EVERY deploy, or a
      browser holding a cached copy mixes old JS with new HTML and dies silently
      (Ernest's Chrome, 30 Jul). -->
-<link rel="stylesheet" href="css/app.css?v=20260730d">
+<link rel="stylesheet" href="css/app.css?v=20260730e">
 </head>
 <body>
 
@@ -25,12 +25,12 @@
       <div class="site-grid" id="site-grid"></div>
     </div>
     <div class="login-step hidden" id="login-step-staff">
-      <button class="back-link" data-back="site">‹ Change site</button>
+      <button class="back-link" data-back="site"><svg class="ic sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg> Change site</button>
       <label class="field-label">Who are you?</label>
       <div class="staff-list" id="staff-list"></div>
     </div>
     <div class="login-step hidden" id="login-step-register">
-      <button class="back-link" data-back="staff">‹ Back to the list</button>
+      <button class="back-link" data-back="staff"><svg class="ic sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg> Back to the list</button>
       <label class="field-label">Register yourself</label>
       <input class="search-input" id="reg-name" placeholder="Your full name" maxlength="60" autocomplete="name">
       <label class="field-label" style="margin-top:14px">Home site (optional)</label>
@@ -53,7 +53,7 @@
       <p class="pin-error hidden" id="reg-error" role="alert"></p>
     </div>
     <div class="login-step hidden" id="login-step-pin">
-      <button class="back-link" data-back="staff">‹ Not you?</button>
+      <button class="back-link" data-back="staff"><svg class="ic sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg> Not you?</button>
       <label class="field-label" id="pin-title">Enter your PIN</label>
       <p class="pin-sub hidden" id="pin-sub"></p>
       <div class="pin-dots" id="pin-dots"><i></i><i></i><i></i><i></i></div>
@@ -66,12 +66,12 @@
 <!-- ============ CHECKLIST VIEW ============ -->
 <div class="view hidden" id="view-checklist">
   <header class="app-header">
-    <button class="icon-btn" id="btn-menu" title="Menu">☰</button>
+    <button class="icon-btn" id="btn-menu" title="Menu"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
     <div class="header-center">
       <div class="header-site" id="hdr-site">Site</div>
       <div class="header-meta"><span id="hdr-date"></span> · <span id="hdr-staff"></span></div>
     </div>
-    <button class="icon-btn" id="btn-logout" title="Log out">⏻</button>
+    <button class="icon-btn" id="btn-logout" title="Log out"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v8"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg></button>
   </header>
   <div class="demo-badge" id="mode-badge">DEMO MODE · AI readings are simulated — real engine comes with the backend</div>
 
@@ -86,10 +86,10 @@
     </div>
   </div>
 
-  <div class="section-label hidden" id="sec-morning-label">☀️ Opening GMV <span class="sec-hint">24-hr merchants · shoot at 10 am</span></div>
+  <div class="section-label hidden" id="sec-morning-label"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.5 4.5l2 2M17.5 17.5l2 2M19.5 4.5l-2 2M6.5 17.5l-2 2"/></svg> Opening GMV <span class="sec-hint">24-hr merchants · shoot at 10 am</span></div>
   <div class="merchant-list" id="list-morning"></div>
 
-  <div class="section-label">🌙 Closing GMV</div>
+  <div class="section-label"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.4 14.5A8.4 8.4 0 1 1 9.5 3.6a7 7 0 0 0 10.9 10.9z"/></svg> Closing GMV</div>
   <div class="merchant-list" id="list-evening"></div>
   <div style="height:40px"></div>
 </div>
@@ -97,11 +97,11 @@
 <!-- ============ MENU SHEET ============ -->
 <div class="overlay hidden" id="menu-overlay">
   <div class="menu-sheet">
-    <button class="menu-item" id="menu-review">🗓️ <span>Review previous days</span></button>
-    <button class="menu-item" id="menu-addbrand">➕ <span>Add new brand</span></button>
-    <button class="menu-item" id="menu-brands">🏷️ <span>Manage brands</span></button>
-    <button class="menu-item" id="menu-pin">🔒 <span>Change my PIN</span></button>
-    <button class="menu-item" id="menu-logout">⏻ <span>Log out</span></button>
+    <button class="menu-item" id="menu-review"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg> <span>Review previous days</span></button>
+    <button class="menu-item" id="menu-addbrand"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> <span>Add new brand</span></button>
+    <button class="menu-item" id="menu-brands"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12l9-9h9v9l-9 9z"/><circle cx="16.5" cy="7.5" r="1.4"/></svg> <span>Manage brands</span></button>
+    <button class="menu-item" id="menu-pin"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> <span>Change my PIN</span></button>
+    <button class="menu-item" id="menu-logout"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v8"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg> <span>Log out</span></button>
     <button class="menu-cancel" id="menu-cancel">Cancel</button>
   </div>
 </div>
@@ -109,7 +109,7 @@
 <!-- ============ REVIEW VIEW ============ -->
 <div class="view hidden" id="view-review">
   <header class="app-header">
-    <button class="icon-btn" id="btn-review-back" aria-label="Back">‹</button>
+    <button class="icon-btn" id="btn-review-back" aria-label="Back"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg></button>
     <div class="header-center">
       <div class="header-site">Review sales</div>
       <div class="header-meta" id="rv-sub"></div>
@@ -125,7 +125,7 @@
 <!-- ============ MANAGE BRANDS VIEW ============ -->
 <div class="view hidden" id="view-brands">
   <header class="app-header">
-    <button class="icon-btn" id="btn-brands-back" aria-label="Back">‹</button>
+    <button class="icon-btn" id="btn-brands-back" aria-label="Back"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg></button>
     <div class="header-center">
       <div class="header-site">Manage brands</div>
       <div class="header-meta" id="mb-sub"></div>
@@ -141,7 +141,7 @@
 <!-- ============ CAPTURE VIEW ============ -->
 <div class="view hidden" id="view-capture">
   <header class="app-header">
-    <button class="icon-btn" id="btn-capture-back" aria-label="Back">‹</button>
+    <button class="icon-btn" id="btn-capture-back" aria-label="Back"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg></button>
     <div class="header-center">
       <div class="header-site" id="cap-merchant">Merchant</div>
       <div class="header-meta" id="cap-sub">Kitchen</div>
@@ -165,7 +165,7 @@
 <!-- ============ ADD BRAND VIEW ============ -->
 <div class="view hidden" id="view-addbrand">
   <header class="app-header">
-    <button class="icon-btn" id="btn-addbrand-back" aria-label="Back">‹</button>
+    <button class="icon-btn" id="btn-addbrand-back" aria-label="Back"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg></button>
     <div class="header-center">
       <div class="header-site">Add new brand</div>
       <div class="header-meta" id="ab-sub">Creates a new SFDC ID Map record</div>
@@ -182,7 +182,7 @@
 
     <!-- Page 2: brand name + outside-hours flag -->
     <div id="ab-step2" class="hidden">
-      <button class="back-link" id="ab-back1">‹ Change kitchen</button>
+      <button class="back-link" id="ab-back1"><svg class="ic sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg> Change kitchen</button>
       <div class="ab-picked" id="ab-picked"></div>
       <label class="field-label" style="margin-top:20px">2 · Brand name on the delivery platform</label>
       <input class="search-input" id="ab-brand" placeholder="e.g. DM Chicken">
@@ -203,7 +203,7 @@
 <div class="overlay hidden" id="viewer-overlay">
   <div class="viewer-top">
     <span>Draw a box around the correct number</span>
-    <button class="viewer-close" id="viewer-close" aria-label="Close photo viewer">✕</button>
+    <button class="viewer-close" id="viewer-close" aria-label="Close photo viewer"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
   <div class="viewer-stage" id="viewer-stage">
     <img id="viewer-img" alt="evidence photo" draggable="false">
@@ -222,7 +222,7 @@
 <!-- ============ CHANGE PIN ============ -->
 <div class="overlay hidden" id="pinchange-overlay">
   <div class="menu-sheet">
-    <div class="guard-title">🔒 Change my PIN</div>
+    <div class="guard-title"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Change my PIN</div>
     <label class="field-label" style="margin-top:12px">Current PIN</label>
     <input class="search-input" id="pc-old" type="password" inputmode="numeric" maxlength="4" placeholder="4 digits" autocomplete="off">
     <label class="field-label" style="margin-top:12px">New PIN — enter it twice</label>
@@ -241,7 +241,7 @@
 <!-- ============ LOGOUT GUARD (unsaved records) ============ -->
 <div class="overlay hidden" id="guard-overlay">
   <div class="menu-sheet">
-    <div class="guard-title">❗ Some records are not saved yet</div>
+    <div class="guard-title"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6"/><path d="M12 16.5v.2"/></svg> Some records are not saved yet</div>
     <p class="ab-note" id="guard-list" style="margin:6px 0 14px"></p>
     <button class="menu-item" id="guard-retry">🔄 <span>Retry saving all</span></button>
     <button class="menu-item guard-danger" id="guard-logout">⏻ <span>Log out anyway — unsaved data will be lost</span></button>
@@ -275,7 +275,7 @@
 
 <!-- Catalog, roster and customers load live from /api/catalog at boot —
      no merchant or staff data ships with this public repo. -->
-<script src="js/config.js?v=20260730d"></script>
-<script src="js/app.js?v=20260730d"></script>
+<script src="js/config.js?v=20260730e"></script>
+<script src="js/app.js?v=20260730e"></script>
 </body>
 </html>

@@ -119,6 +119,37 @@ function channelsFor(m, siteId) {
   if (siteId === 'S12') ch.push('dinein', 'promodinein');
   return ch;
 }
+/* ---------- inline icon set (style pack A, 29 Jul): consistent line icons
+   replace emoji in rendered UI. em-sized, inherits color — drop-in for HTML.
+   Toast/button plain-text strings keep unicode marks (textContent paths). */
+const ICONS = {
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  power: '<path d="M12 3v8"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/>',
+  chevL: '<path d="M14 6l-6 6 6 6"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.4"/>',
+  calendar: '<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  tag: '<path d="M3 12l9-9h9v9l-9 9z"/><circle cx="16.5" cy="7.5" r="1.4"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.5 4.5l2 2M17.5 17.5l2 2M19.5 4.5l-2 2M6.5 17.5l-2 2"/>',
+  moon: '<path d="M20.4 14.5A8.4 8.4 0 1 1 9.5 3.6a7 7 0 0 0 10.9 10.9z"/>',
+  loader: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
+  alert: '<path d="M12 3L2 20h20z"/><path d="M12 10v4"/><path d="M12 17.2v.2"/>',
+  bang: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6"/><path d="M12 16.5v.2"/>',
+  dot: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>',
+  check: '<path d="M4.5 12.5l5 5 10-11"/>',
+  file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
+  archive: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v11h14V9M10 13h4"/>',
+  zoom: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/>',
+  hand: '<path d="M12 21c-4 0-6-2.5-6-6V9.5a1.5 1.5 0 0 1 3 0V6a1.5 1.5 0 0 1 3 0v5"/><path d="M12 11V4.5a1.5 1.5 0 0 1 3 0V12"/><path d="M15 12a1.5 1.5 0 0 1 3 1v2c0 4-2 6-6 6"/>',
+  receipt: '<path d="M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21z"/><path d="M9 8h6M9 12h6"/>',
+};
+function ic(name, cls) {
+  return `<svg class="ic ${cls || ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" `
+    + `stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+}
+
 const CORE = ['grab', 'fp'];                      // always expanded, required
 const OPTIONAL = ['others', 'catering', 'dinein', 'promodinein']; // collapsed, default 0
 const AI_CHANNELS = ['grab', 'fp'];               // only these call the AI engine (cost control)
@@ -245,7 +276,7 @@ function renderStaff() {
     (main.length ? `<div class="roster-group">${esc(state.site.name)} team</div>` + main.map(btn).join('') : '') +
     (cover.length ? `<div class="roster-group">Also covers ${esc(state.site.name)}</div>` + cover.map(btn).join('') : '') +
     (others.length ? `<div class="roster-group">Other sites / part-timers</div>` + others.map(btn).join('') : '') +
-    `<button class="staff-btn" id="btn-register"><span class="avatar">➕</span>I'm not on the list</button>`;
+    `<button class="staff-btn" id="btn-register"><span class="avatar">${ic('plus')}</span>I'm not on the list</button>`;
   $('staff-list').querySelectorAll('.staff-btn[data-id]').forEach((b) => b.onclick = () => {
     proceedToPin(DATA.staff.find((p) => p.id === b.dataset.id));
   });
@@ -627,10 +658,10 @@ function renderChecklist() {
     const reading = baselineReading(m);
     const st = bm.saved ? ['done', '✓ Opening GMV recorded']
       : bm.inFlight ? ['pending', '⬆ saving…']
-      : bm.error ? ['flagred', '❗ not saved — tap to retry']
-      : reading ? ['pending', '⏳ AI reading…']
-      : baselineHasShots(m) ? ['flag', '🟡 confirm opening GMV']
-      : ['flag', '⚠ Opening GMV missing'];
+      : bm.error ? ['flagred', ic('bang') + ' not saved — tap to retry']
+      : reading ? ['pending', ic('loader') + ' AI reading…']
+      : baselineHasShots(m) ? ['flag', ic('dot') + ' confirm opening GMV']
+      : ['flag', ic('alert') + ' Opening GMV missing'];
     return `<div class="merchant-card ${bm.error ? 'failed' : ''}" data-id="${esc(m.id)}" data-mode="baseline">
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
@@ -641,10 +672,10 @@ function renderChecklist() {
 
   if (all.length === 0) {
     $('list-evening').innerHTML = state.merchants.length
-      ? `<div class="empty-note">🏷️ All brands at this site are disabled.<br>
-        <small>Re-enable them via ☰ → Manage brands — nothing needs to be re-created.</small></div>`
-      : `<div class="empty-note">🏪 No merchants at this site yet.<br>
-        <small>Add the first one via ☰ → Add new brand — it appears here right away.</small></div>`;
+      ? `<div class="empty-note">${ic('tag')} All brands at this site are disabled.<br>
+        <small>Re-enable them via ${ic('menu')} → Manage brands — nothing needs to be re-created.</small></div>`
+      : `<div class="empty-note">${ic('archive')} No merchants at this site yet.<br>
+        <small>Add the first one via ${ic('menu')} → Add new brand — it appears here right away.</small></div>`;
     return;
   }
   $('list-evening').innerHTML = all.map((m) => {
@@ -654,7 +685,7 @@ function renderChecklist() {
     if (r && r.inFlight) {
       status = '<span class="m-status pending">⬆ saving…</span>';
     } else if (r && saveFailed(r)) {
-      status = '<span class="m-status flagred">❗ not saved — tap to retry</span>';
+      status = '<span class="m-status flagred">' + ic('bang') + ' not saved — tap to retry</span>';
     } else if (done && r.status === 'Operated') {
       const tot = Object.values(r.channels).reduce((s, c) =>
         s + Number(c.finalGmv ?? c.gmv ?? 0) + (c.extras || []).reduce((t, e) => t + Number(e.gmv || 0), 0), 0);
@@ -663,8 +694,8 @@ function renderChecklist() {
       status = `<span class="m-status done">✓ ${esc(r.status)}</span>`;
     } else if (r && r.draft) {
       status = (r.pending || 0) > 0
-        ? '<span class="m-status pending">⏳ AI reading…</span>'
-        : '<span class="m-status flag">🟡 confirm readings</span>';
+        ? '<span class="m-status pending">' + ic('loader') + ' AI reading…</span>'
+        : '<span class="m-status flag">' + ic('dot') + ' confirm readings</span>';
     }
     const tags = [
       m.overnight ? '<span class="tag h24">24 HR</span>' : '',
@@ -760,7 +791,7 @@ function renderBrands() {
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
         <div class="m-tags">${m.disabled ? '<span class="tag off">DISABLED</span>' : '<span class="tag on">ACTIVE</span>'}${m.overnight ? '<span class="tag h24">24 HR</span>' : ''}</div></div>
       <div class="mb-btns">
-        <button class="mb-moon ${m.overnight ? 'on' : ''}" data-id="${esc(m.id)}" title="Operates outside 10 am – 10 pm — needs a daily opening GMV shot">🌙</button>
+        <button class="mb-moon ${m.overnight ? 'on' : ''}" data-id="${esc(m.id)}" title="Operates outside 10 am – 10 pm — needs a daily opening GMV shot">${ic('moon')}</button>
         <button class="mb-toggle ${m.disabled ? 'enable' : ''}" data-id="${esc(m.id)}">${m.disabled ? 'Enable' : 'Disable'}</button>
       </div>
     </div>`).join('') : '<p class="ab-note">No brands at this site yet.</p>';
@@ -874,7 +905,7 @@ function renderReview() {
     const badges =
       (r.amendedBy ? `<span class="tag amend">✏️ amended by ${esc(r.amendedBy)}</span>`
         : r.auditEdited ? '<span class="tag amend">✏️ amended</span>' : '')
-      + (r.billingFlag && r.billingFlag !== 'OK' ? `<span class="tag flagwarn">⚠ ${esc(r.billingFlag)}</span>` : '');
+      + (r.billingFlag && r.billingFlag !== 'OK' ? `<span class="tag flagwarn">${ic('alert')} ${esc(r.billingFlag)}</span>` : '');
     const by = `<span class="customer-meta">by ${esc(r.staffName || state.staff.name)}</span>`;
     if (r.status !== 'Operated') {
       return `<div class="merchant-card done" data-mid="${esc(m.id)}"><div class="m-kitchen">${esc(m.kitchen)}</div>
@@ -902,7 +933,7 @@ function renderReview() {
     if (!m) return '';
     const parts = Object.entries(sr.channels)
       .map(([ch, c]) => `${CH_META[ch].name} ${c.orders || 0} · ${money(Number(c.gmv || 0))}`).join(' · ');
-    return `<div class="merchant-card rv-base"><div class="m-kitchen">☀️</div>
+    return `<div class="merchant-card rv-base"><div class="m-kitchen">${ic('sun')}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)} — opening GMV</div>
         <div class="m-tags"><span class="customer-meta">${esc(parts)} · deducted that night · view only</span></div></div></div>`;
   }).join('');
@@ -987,15 +1018,15 @@ function renderBaselineBanner() {
   const el = $('baseline-banner');
   if (offset) { el.classList.add('hidden'); return; }   // past-day edits: plain edit, no baseline logic
   if (mode === 'baseline') {
-    el.innerHTML = `☀️ <b>${esc(m.brand)} runs 24 hours.</b> Shoot each screen now — stored as today's opening GMV and deducted automatically tonight. Nothing is billed from this shot.`;
+    el.innerHTML = `${ic('sun')} <b>${esc(m.brand)} runs 24 hours.</b> Shoot each screen now — stored as today's opening GMV and deducted automatically tonight. Nothing is billed from this shot.`;
     el.classList.remove('hidden');
   } else if (m.overnight) {
     const bm = state.baselineMeta[m.id] || {};
     el.innerHTML = baselineDone(m)
-      ? `🌙 24-hr merchant — tonight's reading auto-deducts this morning's opening GMV. Both photos are kept as evidence.`
+      ? `${ic('moon')} 24-hr merchant — tonight's reading auto-deducts this morning's opening GMV. Both photos are kept as evidence.`
       : bm.inFlight
-      ? `⬆ <b>Opening GMV is saving right now.</b> Give it a moment — the save button unlocks as soon as it lands.`
-      : `⚠️ <b>No opening GMV today.</b> Tonight's reading cannot auto-deduct — it will be flagged for supervisor review. You can also go back and shoot the opening GMV first.`;
+      ? `${ic('loader')} <b>Opening GMV is saving right now.</b> Give it a moment — the save button unlocks as soon as it lands.`
+      : `${ic('alert')} <b>No opening GMV today.</b> Tonight's reading cannot auto-deduct — it will be flagged for supervisor review. You can also go back and shoot the opening GMV first.`;
     el.classList.remove('hidden');
   } else {
     el.classList.add('hidden');
@@ -1070,9 +1101,9 @@ function extrasHTML(ch, val, rec) {
     const thumb = e.thumbUrl || e.photoUrl
       || (e.photoId ? `${CONFIG.apiBase}/api/photo/${esc(e.photoId)}` : null);
     const stateIcon = e.pendingAI ? '<span class="spinner sm"></span>'
-      : e.dup ? '⚠' : e.conf === 'high' && !e.edited ? '✓' : e.edited ? '✎' : '⚠';
+      : e.dup ? ic('alert') : e.conf === 'high' && !e.edited ? '✓' : e.edited ? '✎' : ic('alert');
     return `<div class="extra-row ${e.edited ? 'edited' : ''} ${e.dup ? 'dup' : ''}">
-      ${thumb ? `<img class="x-thumb" src="${thumb}" alt="order ${i + 1}">` : '<span class="x-thumb file">📎</span>'}
+      ${thumb ? `<img class="x-thumb" src="${thumb}" alt="order ${i + 1}">` : '<span class="x-thumb file">' + ic('file') + '</span>'}
       <span class="x-meta">#${i + 1}${e.orderRef ? ' · ' + esc(e.orderRef) : ''}<em>1 order</em></span>
       <span class="x-state">${stateIcon}</span>
       <input class="x-amt" inputmode="decimal" placeholder="0.00" data-x="${i}"
@@ -1089,7 +1120,7 @@ function extrasHTML(ch, val, rec) {
   /* Platform asymmetry (Ernest 29 Jul): Grab's Net sales excludes BOTH
      locker orders and out-for-delivery orders; foodpanda's All already
      includes out-for-delivery — adding those would double-bill. */
-  const head = ch === 'grab' ? '⏳ Not in the summary yet' : '⏳ Pending rider pickup';
+  const head = ch === 'grab' ? ic('loader') + ' Not in the summary yet' : ic('loader') + ' Pending rider pickup';
   const hint = ch === 'grab'
     ? "In the locker or out for delivery? Grab's Net sales does not include those yet — shoot each order's details page, one photo per order. Shoot the summary first."
     : "Waiting for a rider? Shoot each order's details page — one photo per order. Orders already out for delivery ARE counted in foodpanda's All, so don't add them.";
@@ -1118,46 +1149,46 @@ function channelBodyHTML(ch, val, base, mode) {
     </div>`;
   const aiChannel = AI_CHANNELS.includes(ch);
   const statusLine = !aiChannel
-    ? '<span class="screen-note">📎 Evidence photo attached — numbers entered manually</span>'
+    ? '<span class="screen-note">' + ic('file') + ' Evidence photo attached — numbers entered manually</span>'
     : val.pendingAI ? '<span class="screen-note"><span class="spinner sm"></span> AI reading in background — you can move on and confirm later</span>'
     : val.conf === 'high' ? '<span class="ok">✓ AI read · high confidence</span>'
-    : '<span class="warn">⚠ AI read · please double-check</span>';
+    : '<span class="warn">' + ic('alert') + ' AI read · please double-check</span>';
   const photo = val.photoUrl
     ? `<div class="photo-row"><img class="thumb tap" src="${val.photoUrl}" alt="evidence" title="Tap to mark the correct number on the photo">
         <div class="ai-note-col">
           ${statusLine}
           ${aiChannel ? `<span class="screen-note">${esc(val.screen || '')}</span>` : ''}
-          <span class="tap-hint">👆 Tap photo to mark the correct number</span>
+          <span class="tap-hint">${ic('hand')} Tap photo to mark the correct number</span>
         </div>
         <div class="photo-btns"><button class="retake">Retake</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
     : val.photoLink && val.photoId
     ? `<div class="photo-row"><img class="thumb tap" src="${CONFIG.apiBase}/api/photo/${esc(val.photoId)}" alt="evidence" title="Tap to view or mark the correct number">
         <div class="ai-note-col">
-          <span class="screen-note">🗂️ Photo on record — saved to Drive earlier.</span>
-          <span class="tap-hint">👆 Tap to view or mark the correct number</span>
+          <span class="screen-note">${ic('archive')} Photo on record — saved to Drive earlier.</span>
+          <span class="tap-hint">${ic('hand')} Tap to view or mark the correct number</span>
         </div>
         <div class="photo-btns"><button class="retake">Retake</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
     : val.photoLink
-    ? `<div class="photo-row"><span class="photo-chip">🗂️ Photo on record</span>
+    ? `<div class="photo-row"><span class="photo-chip">${ic('archive')} Photo on record</span>
         <div class="ai-note-col"><span class="screen-note">Saved to Drive earlier — retake only if it was wrong.</span></div>
         <div class="photo-btns"><button class="retake">Retake</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
-    : `<div class="photo-slot"><span class="cam">📷</span> Snap or upload ${esc(CH_META[ch].name)} screen</div>
+    : `<div class="photo-slot"><span class="cam">${ic('camera')}</span> Snap or upload ${esc(CH_META[ch].name)} screen</div>
        <div class="no-photo-note">${aiChannel
          ? 'You can type the numbers first — but a photo is required as evidence before saving.'
          : 'This channel is manual — type the numbers, and attach a photo as evidence.'}</div>`;
   let extra = '';
   if (mode === 'baseline' && channelHasData(val)) {
-    extra = `<div class="deduct-box">☀️ Stored as today's opening GMV — deducted tonight. Not billed.</div>`;
+    extra = `<div class="deduct-box">${ic('sun')} Stored as today's opening GMV — deducted tonight. Not billed.</div>`;
   } else if (base && channelHasData(val)) {
     const x = extrasTotals(val);
     const bOrders = Number(base.finalOrders ?? base.orders ?? 0);
     const bGmv = Number(base.finalGmv ?? base.gmv ?? 0);
     const bo = (o ?? 0) + x.n - bOrders;
     const bg = (g ?? 0) + x.gmv - bGmv;
-    extra = `<div class="deduct-box">☀️ Opening GMV this morning: ${bOrders} orders · ${money(bGmv)}<br>
-      🧾 <b>Billable 10 am–10 pm: ${bo} orders · ${money(bg)}</b></div>`;
+    extra = `<div class="deduct-box">${ic('sun')} Opening GMV this morning: ${bOrders} orders · ${money(bGmv)}<br>
+      ${ic('receipt')} <b>Billable 10 am–10 pm: ${bo} orders · ${money(bg)}</b></div>`;
   }
-  const mism = val.mismatch ? `<div class="mismatch">⚠ ${esc(val.mismatch)}</div>` : '';
+  const mism = val.mismatch ? `<div class="mismatch">${ic('alert')} ${esc(val.mismatch)}</div>` : '';
   /* Pending-pickup must stay addable AFTER saving and in Review edits too —
      field feedback 30 Jul: the section vanished once the day was submitted. */
   const extras = mode === 'evening' && AI_CHANNELS.includes(ch)

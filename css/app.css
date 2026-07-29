@@ -419,3 +419,24 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
   .spinner { animation-duration: 1.6s; }
   #viewer-img { transition: none; }
 }
+
+/* ============ Style pack A (29 Jul): identity kept, finish unified ============ */
+.ic { width: 1em; height: 1em; vertical-align: -0.125em; display: inline-block; flex: none; }
+.ic.sm { width: 0.85em; height: 0.85em; }
+.icon-btn .ic { width: 20px; height: 20px; }
+.menu-item .ic { width: 18px; height: 18px; margin-right: 2px; }
+.section-label .ic { width: 14px; height: 14px; color: var(--ink-2); }
+.m-status .ic, .extras-head .ic, .guard-title .ic { vertical-align: -0.15em; }
+.avatar .ic { width: 16px; height: 16px; }
+.photo-slot .cam .ic { width: 20px; height: 20px; }
+/* shadows -> hairline borders on in-flow cards (menus/overlays keep depth) */
+.progress-card, .merchant-card, .channel-card {
+  box-shadow: none; border: 0.5px solid #E5E2DB;
+}
+/* money and counters in tabular figures */
+.m-total, .rf input, .x-amt, .total-strip, .ring-label, .deduct-box, .m-status {
+  font-variant-numeric: tabular-nums;
+}
+/* recorded money reads green (borrowed from option B: money = green) */
+.m-total { color: #0F6E56; }
+:root { --paper: #FAF8F5; }
