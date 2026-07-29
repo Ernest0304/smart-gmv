@@ -221,13 +221,25 @@ function renderSites() {
   });
 }
 function renderStaff() {
-  const home = DATA.staff.filter((p) => p.home === state.site.id);
-  const others = DATA.staff.filter((p) => p.home !== state.site.id);
+  /* Home Site is a priority list (Ernest 29 Jul): first = main site, the rest
+     = 2nd/3rd/… priority. Roster order at a site: its own team, then people
+     who cover it (by priority), then everyone else. */
+  const sid = state.site.id;
+  const prio = (p) => {
+    const list = (p.homeSites && p.homeSites.length) ? p.homeSites : (p.home ? [p.home] : []);
+    const i = list.indexOf(sid);
+    return i === -1 ? Infinity : i;
+  };
+  const main = DATA.staff.filter((p) => prio(p) === 0);
+  const cover = DATA.staff.filter((p) => prio(p) > 0 && prio(p) !== Infinity)
+    .sort((a, b) => prio(a) - prio(b));
+  const others = DATA.staff.filter((p) => prio(p) === Infinity);
   const btn = (p) => `<button class="staff-btn" data-id="${esc(p.id)}"><span class="avatar">${esc(p.name[0])}</span>${esc(p.name)}
-      ${p.partTimer ? '<span class="tag pt" style="margin-left:auto">PART-TIMER</span>' : (p.home && p.home !== state.site.id ? `<span class="tag pt" style="margin-left:auto">${esc(p.home)}</span>` : '')}</button>`;
+      ${p.partTimer ? '<span class="tag pt" style="margin-left:auto">PART-TIMER</span>' : (p.home && p.home !== sid ? `<span class="tag pt" style="margin-left:auto">${esc(p.home)}</span>` : '')}</button>`;
   $('staff-list').innerHTML =
-    (home.length ? `<div class="roster-group">${esc(state.site.name)} team</div>` + home.map(btn).join('') : '') +
-    `<div class="roster-group">Helping out today / part-timers</div>` + others.map(btn).join('') +
+    (main.length ? `<div class="roster-group">${esc(state.site.name)} team</div>` + main.map(btn).join('') : '') +
+    (cover.length ? `<div class="roster-group">Also covers ${esc(state.site.name)}</div>` + cover.map(btn).join('') : '') +
+    (others.length ? `<div class="roster-group">Other sites / part-timers</div>` + others.map(btn).join('') : '') +
     `<button class="staff-btn" id="btn-register"><span class="avatar">➕</span>I'm not on the list</button>`;
   $('staff-list').querySelectorAll('.staff-btn[data-id]').forEach((b) => b.onclick = () => {
     proceedToPin(DATA.staff.find((p) => p.id === b.dataset.id));
@@ -313,7 +325,7 @@ async function submitRegistration(allowDuplicate) {
         $('dup-overlay').classList.add('hidden');
         proceedToPin(DATA.staff.find((p) => p.id === d.existing.id)
           || { id: d.existing.id, name: d.existing.name, home: d.existing.home,
-               needsPin: !!d.existing.needsPin });
+               homeSites: d.existing.homeSites || [], needsPin: !!d.existing.needsPin });
       };
       $('dup-new').onclick = () => { $('dup-overlay').classList.add('hidden'); submitRegistration(true); };
       $('dup-cancel').onclick = () => $('dup-overlay').classList.add('hidden');

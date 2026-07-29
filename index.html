@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#B01E2E">
 <title>Smart GMV</title>
-<link rel="stylesheet" href="css/app.css">
+<!-- ?v= pairs the HTML with matching assets — bump it on EVERY deploy, or a
+     browser holding a cached copy mixes old JS with new HTML and dies silently
+     (Ernest's Chrome, 30 Jul). -->
+<link rel="stylesheet" href="css/app.css?v=20260730a">
 </head>
 <body>
 
@@ -247,7 +250,7 @@
 
 <!-- Catalog, roster and customers load live from /api/catalog at boot —
      no merchant or staff data ships with this public repo. -->
-<script src="js/config.js"></script>
-<script src="js/app.js"></script>
+<script src="js/config.js?v=20260730a"></script>
+<script src="js/app.js?v=20260730a"></script>
 </body>
 </html>
