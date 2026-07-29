@@ -2111,6 +2111,7 @@ function closeTopLayer() {
   }
   if (!$('view-capture').classList.contains('hidden')) { $('btn-capture-back').click(); return true; }
   if (!$('view-review').classList.contains('hidden')) { $('btn-review-back').click(); return true; }
+  if (!$('view-billing').classList.contains('hidden')) { $('btn-billing-back').click(); return true; }
   if (!$('view-brands').classList.contains('hidden')) { $('btn-brands-back').click(); return true; }
   if (!$('view-addbrand').classList.contains('hidden')) { $('btn-addbrand-back').click(); return true; }
   if (!$('view-login').classList.contains('hidden')) {
@@ -2133,3 +2134,73 @@ window.addEventListener('beforeunload', (e) => {
     e.returnValue = '';
   }
 });
+
+/* ---------- monthly billing (menu-only view — capture stays the app's core) ---------- */
+const bl = { month: null };
+function monthLabel(ym) {
+  const [y, mo] = ym.split('-');
+  return new Date(Number(y), Number(mo) - 1, 1)
+    .toLocaleDateString('en-SG', { month: 'long', year: 'numeric' });
+}
+function billingMonths() {
+  const now = new Date(Date.now() - 6 * 3600 * 1000);   // business day
+  const cur = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return [cur, `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`];
+}
+function openBilling() {
+  bl.month = billingMonths()[0];
+  renderBillingShell();
+  show('view-billing');
+  loadBilling();
+}
+function renderBillingShell() {
+  $('bl-sub').textContent = `${state.site.name} · ${state.site.id}`;
+  $('bl-months').innerHTML = billingMonths().map((m) =>
+    `<button class="chip ${bl.month === m ? 'active' : ''}" data-m="${m}">${esc(monthLabel(m))}</button>`).join('');
+  $('bl-months').querySelectorAll('.chip').forEach((c) => c.onclick = () => {
+    bl.month = c.dataset.m; renderBillingShell(); loadBilling();
+  });
+}
+async function loadBilling() {
+  $('bl-body').innerHTML = '<p class="ab-note"><span class="spinner sm"></span> Adding up the month…</p>';
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/billing?site=${state.site.id}&month=${bl.month}`);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    renderBilling(d);
+  } catch (e) {
+    $('bl-body').innerHTML = `<p class="ab-note">${ic('alert')} Could not load the summary (${esc(e.message)}).</p>
+      <button class="chip" id="bl-retry">Try again</button>`;
+    $('bl-retry').onclick = loadBilling;
+  }
+}
+function renderBilling(d) {
+  if (!d.merchants.length) {
+    $('bl-body').innerHTML = `<div class="empty-note">No closing records for ${esc(monthLabel(d.month))} yet.</div>`;
+    return;
+  }
+  const t = d.totals;
+  const manual = (m) => m.othersGmv + m.cateringGmv + m.dineinGmv + m.promoDineinGmv;
+  const rows = d.merchants.map((m) => `<div class="merchant-card" style="cursor:default">
+      <div class="m-kitchen">${esc(m.kitchen)}</div>
+      <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
+        <div class="m-tags"><span class="bl-days">${m.days} day${m.days > 1 ? 's' : ''} recorded</span></div></div>
+      <div style="text-align:right"><div class="m-total">${money(m.totalGmv)}</div>
+        <div class="bl-mini">G ${money(m.billableGrabGmv)} · F ${money(m.billableFpGmv)}${manual(m) ? ' · other ' + money(manual(m)) : ''}</div></div>
+    </div>`).join('');
+  const flags = d.flags.length
+    ? `<div class="section-label" style="margin-top:22px">${ic('alert')} Needs review <span class="sec-hint">${d.flags.length} record${d.flags.length > 1 ? 's' : ''} — clear these before invoicing</span></div>
+       ${d.flags.map((f) => `<div class="bl-flag">${esc(f.date.slice(5))} · ${esc(f.kitchen)} ${esc(f.brand)}${f.flag ? ` — <b>${esc(f.flag)}</b>` : ''}${f.edited ? `${f.flag ? ' ·' : ' —'} edited` : ''}</div>`).join('')}`
+    : `<p class="ab-note" style="margin-top:18px">${ic('check')} No flags this month — every record is clean.</p>`;
+  $('bl-body').innerHTML = `
+    <div class="progress-card" style="display:block">
+      <span class="bl-cap">Site total · ${esc(monthLabel(d.month))} · billable</span>
+      <div class="bl-big">${money(t.totalGmv)}</div>
+      <div class="bl-mini">Grab ${money(t.billableGrabGmv)} · foodpanda ${money(t.billableFpGmv)} · manual channels ${money(t.othersGmv + t.cateringGmv + t.dineinGmv + t.promoDineinGmv)}</div>
+    </div>
+    <div class="merchant-list" style="margin-top:14px">${rows}</div>
+    ${flags}`;
+}
+$('menu-billing').onclick = () => { $('menu-overlay').classList.add('hidden'); openBilling(); };
+$('btn-billing-back').onclick = () => { renderChecklist(); show('view-checklist'); };
