@@ -39,6 +39,8 @@ async function loadCatalog() {
 
 const state = {
   site: null, staff: null, pin: '',
+  pinMode: 'verify',                // verify | create | confirm (first-login PIN claim)
+  pinFirst: '',                     // first entry while confirming a new PIN
   salesDate: null,                  // business date, frozen at login (before 06:00 = yesterday)
   merchants: [],                    // merchants of the selected site
   records: {},                      // merchantId -> record (today)
@@ -60,10 +62,11 @@ function djb2(s) {
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
   return h;
 }
-function recordIdFor(m, type) {
+function recordIdFor(m, type, dateStr) {
   const slug = (m.brand.toLowerCase().replace(/[^a-z0-9]/g, '') || 'x').slice(0, 12);
   const hash = djb2(`${m.sfdcId}|${m.brand}|${m.kitchen}`).toString(36).padStart(4, '0').slice(0, 4);
-  return `${m.site}-${m.kitchen}-${slug}-${hash}-${state.salesDate.replace(/-/g, '')}-${type === 'baseline' ? 'B' : 'C'}`;
+  const ymd = (dateStr || state.salesDate).replace(/-/g, '');
+  return `${m.site}-${m.kitchen}-${slug}-${hash}-${ymd}-${type === 'baseline' ? 'B' : 'C'}`;
 }
 function businessDate() {
   // Before 06:00 a round still belongs to yesterday (post-midnight closings).
@@ -76,26 +79,28 @@ function nowStamp() {
 }
 
 /* Record store for a given day. Today = live session records; past days are
-   loaded once (demo: synthesized; production: read from the GMV Raw Data tab)
-   and stay editable — edits write back with an audit trail. */
+   hydrated from the GMV Raw Data tab by loadHistory() and stay editable —
+   edits POST back to the same Record ID with a server-side audit trail. */
 function recordsFor(offset) {
   if (!offset) return state.records;
-  if (!state.history[offset]) {
-    const store = {};
-    state.merchants.slice(0, Math.min(4, state.merchants.length)).forEach((m, i) => {
-      store[m.id] = { status: 'Operated', saved: true, staffName: 'Yusof', expanded: {},
-        channels: { grab: { finalOrders: 5 + i * 3 + offset, finalGmv: +(120 + i * 85 + offset * 7).toFixed(2) },
-                    fp: { finalOrders: 2 + i, finalGmv: +(45 + i * 30).toFixed(2) } } };
-    });
-    state.history[offset] = store;
-  }
-  return state.history[offset];
+  return state.history[offset] || (state.history[offset] = {});
 }
 function curRec() { return recordsFor(state.current.offset)[state.current.m.id]; }
+/* All day math anchors on the BUSINESS date (state.salesDate), so at 00:30 the
+   "Today" chip and the server rows still agree on which day this round is. */
+function dateForOffset(offset) {
+  const [y, mo, d] = state.salesDate.split('-').map(Number);
+  const dt = new Date(y, mo - 1, d - offset);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+function offsetForDate(dateStr) {
+  const p = (s) => { const [y, mo, d] = s.split('-').map(Number); return Date.UTC(y, mo - 1, d); };
+  return Math.round((p(state.salesDate) - p(dateStr)) / 86400000);
+}
 function dayLabel(offset) {
   if (!offset) return 'Today';
-  const d = new Date(); d.setDate(d.getDate() - offset);
-  return d.toLocaleDateString('en-SG', { day: 'numeric', month: 'short' });
+  const [y, mo, d] = dateForOffset(offset).split('-').map(Number);
+  return new Date(y, mo - 1, d).toLocaleDateString('en-SG', { day: 'numeric', month: 'short' });
 }
 
 /* ---------- merchant helpers ---------- */
@@ -225,13 +230,38 @@ function renderStaff() {
     `<div class="roster-group">Helping out today / part-timers</div>` + others.map(btn).join('') +
     `<button class="staff-btn" id="btn-register"><span class="avatar">➕</span>I'm not on the list</button>`;
   $('staff-list').querySelectorAll('.staff-btn[data-id]').forEach((b) => b.onclick = () => {
-    state.staff = DATA.staff.find((p) => p.id === b.dataset.id);
-    $('pin-staff-name').textContent = state.staff.name;
-    state.pin = '';
-    paintPin();
-    loginStep('pin');
+    proceedToPin(DATA.staff.find((p) => p.id === b.dataset.id));
   });
   $('btn-register').onclick = openRegister;
+}
+
+/* Route a chosen roster member to the right PIN screen: people whose Staff-tab
+   PIN cell is still blank create their own on first login (no shared default,
+   no PINs handed around) — everyone else just enters theirs. */
+function proceedToPin(staff) {
+  state.staff = staff;
+  state.pin = '';
+  state.pinFirst = '';
+  state.pinMode = staff.needsPin ? 'create' : 'verify';
+  paintPin();
+  paintPinTitle();
+  $('pin-error').classList.add('hidden');
+  loginStep('pin');
+}
+function paintPinTitle() {
+  const name = state.staff ? state.staff.name : '';
+  const t = $('pin-title'), s = $('pin-sub');
+  if (state.pinMode === 'create') {
+    t.textContent = `Hi ${name} — create your 4-digit PIN`;
+    s.textContent = "It logs you in every day from now on. Don't share it.";
+    s.classList.remove('hidden');
+  } else if (state.pinMode === 'confirm') {
+    t.textContent = 'Type it again to confirm';
+    s.classList.add('hidden');
+  } else {
+    t.textContent = `Hi ${name}, enter your PIN`;
+    s.classList.add('hidden');
+  }
 }
 function loginStep(step) {
   ['site', 'staff', 'register', 'pin'].forEach((s) => $('login-step-' + s).classList.toggle('hidden', s !== step));
@@ -240,7 +270,10 @@ function loginStep(step) {
 /* ---------- self-registration (cross-site helpers / new part-timers) ---------- */
 function openRegister() {
   $('reg-name').value = '';
+  $('reg-pin').value = '';
+  $('reg-pin2').value = '';
   $('reg-error').classList.add('hidden');
+  $('reg-pin-note').classList.add('hidden');
   $('reg-home').innerHTML = `<option value="${esc(state.site.id)}">${esc(state.site.name)} (this site)</option>`
     + DATA.sites.filter((s) => s.id !== state.site.id)
         .map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')
@@ -249,8 +282,14 @@ function openRegister() {
   loginStep('register');
 }
 $('reg-name').oninput = updateRegBtn;
+$('reg-pin').oninput = updateRegBtn;
+$('reg-pin2').oninput = updateRegBtn;
 function updateRegBtn() {
-  $('reg-submit').disabled = $('reg-name').value.trim().length < 2;
+  const p1 = $('reg-pin').value, p2 = $('reg-pin2').value;
+  const pinOk = /^\d{4}$/.test(p1) && p1 === p2;
+  // only nag about a mismatch once both fields are complete
+  $('reg-pin-note').classList.toggle('hidden', !(p1.length === 4 && p2.length === 4 && p1 !== p2));
+  $('reg-submit').disabled = $('reg-name').value.trim().length < 2 || !pinOk;
 }
 async function submitRegistration(allowDuplicate) {
   const name = $('reg-name').value.trim();
@@ -260,7 +299,7 @@ async function submitRegistration(allowDuplicate) {
   try {
     const r = await fetch(`${CONFIG.apiBase}/api/staff`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, homeSite: $('reg-home').value,
+      body: JSON.stringify({ name, homeSite: $('reg-home').value, pin: $('reg-pin').value,
         site: state.site.id, allowDuplicate: !!allowDuplicate }),
     });
     const d = await r.json().catch(() => ({}));
@@ -272,25 +311,20 @@ async function submitRegistration(allowDuplicate) {
       $('dup-overlay').classList.remove('hidden');
       $('dup-me').onclick = () => {
         $('dup-overlay').classList.add('hidden');
-        state.staff = DATA.staff.find((p) => p.id === d.existing.id)
-          || { id: d.existing.id, name: d.existing.name, home: d.existing.home };
-        $('pin-staff-name').textContent = state.staff.name;
-        state.pin = '';
-        paintPin();
-        loginStep('pin');
+        proceedToPin(DATA.staff.find((p) => p.id === d.existing.id)
+          || { id: d.existing.id, name: d.existing.name, home: d.existing.home,
+               needsPin: !!d.existing.needsPin });
       };
       $('dup-new').onclick = () => { $('dup-overlay').classList.add('hidden'); submitRegistration(true); };
       $('dup-cancel').onclick = () => $('dup-overlay').classList.add('hidden');
       return;
     }
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    // PIN was chosen in the form and is already on the server — straight in.
     DATA.staff.push(d.staff);
     state.staff = d.staff;
-    $('pin-staff-name').textContent = d.staff.name;
-    state.pin = '';
-    paintPin();
-    loginStep('pin');
     toast(`Welcome, ${d.staff.name} — you're on the list now`);
+    enterApp();
   } catch (e) {
     $('reg-error').textContent = `Registration failed: ${e.message}`;
     $('reg-error').classList.remove('hidden');
@@ -314,33 +348,97 @@ function renderPinPad() {
     if (k === '⌫') state.pin = state.pin.slice(0, -1);
     else if (state.pin.length < 4) state.pin += k;
     paintPin();
-    if (state.pin.length === 4) verifyPin();
+    if (state.pin.length !== 4) return;
+    if (state.pinMode === 'create') {
+      state.pinFirst = state.pin;
+      state.pin = '';
+      state.pinMode = 'confirm';
+      setTimeout(() => { paintPin(); paintPinTitle(); }, 180);
+    } else if (state.pinMode === 'confirm') {
+      if (state.pin === state.pinFirst) claimPin();
+      else {
+        state.pin = '';
+        state.pinFirst = '';
+        state.pinMode = 'create';
+        setTimeout(() => {
+          paintPin();
+          paintPinTitle();
+          $('pin-error').textContent = "The PINs didn't match — start again";
+          $('pin-error').classList.remove('hidden');
+        }, 180);
+      }
+    } else {
+      verifyPin();
+    }
   });
 }
-/* PINs are checked by the server against the Staff tab (blank PIN = default
-   1234 until real ones are filled). The app never sees anyone's PIN. */
+const pinFail = (msg) => {
+  state.pin = '';
+  setTimeout(() => {
+    paintPin();
+    $('pin-error').textContent = msg;
+    $('pin-error').classList.remove('hidden');
+  }, 180);
+};
+/* First-login claim: writes the chosen PIN to this person's blank Staff-tab
+   cell. First claim wins — a second device gets a clear 409. */
+async function claimPin() {
+  pinChecking = true;
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/staff/pin`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staffId: state.staff.id, pin: state.pin }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 409) {
+      state.pinMode = 'verify';
+      state.staff.needsPin = false;
+      paintPinTitle();
+      pinFail('A PIN was already set for this name — enter it, or ask the supervisor to reset it');
+      return;
+    }
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    state.staff = { ...d.staff, needsPin: false };
+    const src = DATA.staff.find((p) => p.id === d.staff.id);
+    if (src) src.needsPin = false;
+    toast('PIN set ✓ — use it to log in from now on');
+    enterApp();
+  } catch (e) {
+    state.pinMode = 'create';
+    state.pinFirst = '';
+    paintPinTitle();
+    pinFail(`Could not save the PIN (${e.message}) — try again`);
+  } finally {
+    pinChecking = false;
+  }
+}
+/* PINs are checked by the server against the Staff tab. The app never sees
+   anyone's stored PIN; a blank cell routes to the create-PIN flow instead. */
 async function verifyPin() {
   pinChecking = true;
-  const fail = (msg) => {
-    state.pin = '';
-    setTimeout(() => {
-      paintPin();
-      $('pin-error').textContent = msg;
-      $('pin-error').classList.remove('hidden');
-    }, 180);
-  };
   try {
     const r = await fetch(`${CONFIG.apiBase}/api/staff/verify`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ staffId: state.staff.id, pin: state.pin }),
     });
     const d = await r.json().catch(() => ({}));
-    if (r.status === 403) { fail('Wrong PIN — try again'); return; }
+    if (r.status === 403 && d.detail === 'pin_not_set') {
+      // roster refreshed on another device since our catalog load
+      state.staff.needsPin = true;
+      state.pin = '';
+      state.pinFirst = '';
+      state.pinMode = 'create';
+      paintPin();
+      paintPinTitle();
+      toast('No PIN yet for this name — create yours now');
+      return;
+    }
+    if (r.status === 403) { pinFail('Wrong PIN — try again'); return; }
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
     state.staff = d.staff;
     enterApp();
   } catch (e) {
-    fail(`Could not verify (${e.message}) — try again`);
+    pinFail(`Could not verify (${e.message}) — try again`);
   } finally {
     pinChecking = false;
   }
@@ -353,6 +451,9 @@ function enterApp() {
   state.records = {};
   state.baselines = {};
   state.baselineMeta = {};
+  state.history = {};
+  rv.loaded = false;
+  rv.unmatched = {};
   state.hydrateError = null;
   state.salesDate = businessDate();
   $('hdr-site').textContent = `${state.site.name} · ${state.site.id}`;
@@ -364,6 +465,28 @@ function enterApp() {
 }
 
 const numOrU = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v));
+const photoIdOf = (link) => (String(link || '').match(/\/d\/([A-Za-z0-9_-]{20,})/) || [])[1];
+
+/* One server row (GET /api/records[…]) -> the local editable record shape.
+   photoId feeds the /api/photo proxy so Drive evidence renders on phones. */
+function serverRecToLocal(sr) {
+  const rec = { status: sr.status || 'Operated', saved: true, serverSaved: true,
+    recordId: sr.recordId, staffName: (sr.staff || '').replace(/\s*\([^)]*\)$/, ''),
+    auditEdited: !!sr.edited, billingFlag: sr.billingFlag || '',
+    salesDate: sr.salesDate, channels: {}, expanded: {} };
+  Object.entries(sr.channels).forEach(([ch, c]) => {
+    rec.channels[ch] = {
+      aiOrders: numOrU(c.aiOrders), aiGmv: numOrU(c.aiGmv),
+      finalOrders: numOrU(c.summaryOrders), finalGmv: numOrU(c.summaryGmv),
+      photoLink: c.photoLink || undefined,
+      photoId: c.photoId || photoIdOf(c.photoLink),
+      extras: (c.extras || []).map((e) => ({ gmv: e.gmv, aiGmv: e.aiGmv ?? undefined,
+        conf: e.conf ?? undefined, orderRef: e.orderRef || '', photoLink: e.photo,
+        photoId: e.photoId || photoIdOf(e.photo) })),
+    };
+  });
+  return rec;
+}
 
 /* Pull today's already-saved rows from the sheet so a reloaded phone (or a
    second device) sees ✓ instead of re-capturing — re-captures would still be
@@ -380,22 +503,11 @@ async function hydrateToday() {
         state.baselineMeta[m.id] = { recordId: sr.recordId, saved: true };
         Object.entries(sr.channels).forEach(([ch, c]) => {
           state.baselines[`${m.id}:${ch}`] = {
-            finalOrders: numOrU(c.orders), finalGmv: numOrU(c.gmv), photoLink: c.photoLink };
+            finalOrders: numOrU(c.orders), finalGmv: numOrU(c.gmv),
+            photoLink: c.photoLink, photoId: c.photoId || photoIdOf(c.photoLink) };
         });
       } else {
-        const rec = { status: sr.status || 'Operated', saved: true, serverSaved: true,
-          recordId: sr.recordId, staffName: (sr.staff || '').replace(/\s*\([^)]*\)$/, ''),
-          channels: {}, expanded: {} };
-        Object.entries(sr.channels).forEach(([ch, c]) => {
-          rec.channels[ch] = {
-            aiOrders: numOrU(c.aiOrders), aiGmv: numOrU(c.aiGmv),
-            finalOrders: numOrU(c.summaryOrders), finalGmv: numOrU(c.summaryGmv),
-            photoLink: c.photoLink || undefined,
-            extras: (c.extras || []).map((e) => ({ gmv: e.gmv, aiGmv: e.aiGmv ?? undefined,
-              conf: e.conf ?? undefined, orderRef: e.orderRef || '', photoLink: e.photo })),
-          };
-        });
-        state.records[m.id] = rec;
+        state.records[m.id] = serverRecToLocal(sr);
       }
     });
     renderChecklist();
@@ -508,7 +620,16 @@ function renderChecklist() {
   document.querySelectorAll('.merchant-card').forEach((c) => c.onclick = () => openCapture(c.dataset.id, c.dataset.mode));
 }
 $('btn-logout').onclick = () => attemptLogout();
-function logout() { state.pin = ''; paintPin(); loginStep('site'); show('view-login'); }
+function logout() {
+  state.pin = '';
+  state.pinFirst = '';
+  state.history = {};
+  rv.loaded = false;
+  rv.unmatched = {};
+  paintPin();
+  loginStep('site');
+  show('view-login');
+}
 
 /* ---------- menu ---------- */
 $('btn-menu').onclick = () => $('menu-overlay').classList.remove('hidden');
@@ -577,45 +698,132 @@ function renderBrands() {
   });
 }
 
-/* ---------- review previous days ---------- */
-const rv = { offset: 0 };
+/* ---------- review previous days (real GMV Raw Data rows) ---------- */
+const rv = { offset: 0, loading: false, loaded: false, error: null, unmatched: {} };
 function openReview() {
   rv.offset = 0;
   renderReview();
   show('view-review');
+  loadHistory(true);   // fresh read on every open — another phone may have saved since
 }
 $('btn-review-back').onclick = () => { renderChecklist(); show('view-checklist'); };
+
+/* Pull the last 6 business days for this site in ONE call and bucket them by
+   offset. Baseline rows are kept separately for display; rows whose brand no
+   longer matches the catalog (renamed in the sheet) surface as read-only. */
+async function loadHistory(force) {
+  if (rv.loading || (rv.loaded && !force)) return;
+  rv.loading = true;
+  rv.error = null;
+  renderReview();
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/records?site=${state.site.id}`
+      + `&from=${dateForOffset(6)}&to=${dateForOffset(1)}`);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    for (let o = 1; o <= 6; o++) state.history[o] = {};
+    rv.unmatched = {};
+    (d.records || []).forEach((sr) => {
+      const off = offsetForDate(sr.salesDate);
+      if (off < 1 || off > 6) return;
+      const m = state.merchants.find((x) => x.kitchen === sr.kitchen && x.brand === sr.brand);
+      if (!m) { (rv.unmatched[off] = rv.unmatched[off] || []).push(sr); return; }
+      if (sr.recordType === 'baseline') {
+        // store alongside the day's records; '_baselines' can never collide
+        // with a merchant id, and only the review renderer reads it
+        (state.history[off]._baselines = state.history[off]._baselines || {})[m.id] = sr;
+      } else {
+        state.history[off][m.id] = serverRecToLocal(sr);
+      }
+    });
+    rv.loaded = true;
+  } catch (e) {
+    rv.error = e.message;
+  }
+  rv.loading = false;
+  renderReview();
+}
+
 function renderReview() {
   $('rv-sub').textContent = `${state.site.name} · ${state.site.id}`;
-  const days = [...Array(7)].map((_, i) => {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    return { offset: i, label: i === 0 ? 'Today' : d.toLocaleDateString('en-SG', { day: 'numeric', month: 'short' }) };
-  });
+  const days = [...Array(7)].map((_, i) => ({ offset: i, label: dayLabel(i) }));
   $('rv-dates').innerHTML = days.map((d) =>
     `<button class="chip ${rv.offset === d.offset ? 'active' : ''}" data-o="${d.offset}">${esc(d.label)}</button>`).join('');
   $('rv-dates').querySelectorAll('.chip').forEach((b) => b.onclick = () => { rv.offset = +b.dataset.o; renderReview(); });
 
-  /* Rows come from the editable day store — tap any row to open and change it. */
+  if (rv.offset && rv.loading) {
+    $('rv-list').innerHTML = '<p class="ab-note" style="margin-top:14px"><span class="spinner sm"></span> Loading saved records…</p>';
+    return;
+  }
+  if (rv.offset && rv.error) {
+    $('rv-list').innerHTML = `<p class="ab-note" style="margin-top:14px">⚠ Could not load history (${esc(rv.error)}).</p>
+      <button class="btn-primary" id="rv-retry" style="margin-top:10px">Try again</button>`;
+    $('rv-retry').onclick = () => loadHistory(true);
+    return;
+  }
+
+  /* Saved rows — tap to open and change (server logs every cell change). */
   const store = recordsFor(rv.offset);
   const rows = state.merchants.filter((m) => store[m.id] && store[m.id].saved).map((m) => ({ m, r: store[m.id] }));
-  $('rv-list').innerHTML = rows.length ? rows.map(({ m, r }) => {
-    const by = r.amendedBy ? `by ${esc(r.staffName || '—')} · ✏️ amended by ${esc(r.amendedBy)}` : `by ${esc(r.staffName || state.staff.name)}`;
+  const cards = rows.map(({ m, r }) => {
+    const badges =
+      (r.amendedBy ? `<span class="tag amend">✏️ amended by ${esc(r.amendedBy)}</span>`
+        : r.auditEdited ? '<span class="tag amend">✏️ amended</span>' : '')
+      + (r.billingFlag && r.billingFlag !== 'OK' ? `<span class="tag flagwarn">⚠ ${esc(r.billingFlag)}</span>` : '');
+    const by = `<span class="customer-meta">by ${esc(r.staffName || state.staff.name)}</span>`;
     if (r.status !== 'Operated') {
       return `<div class="merchant-card done" data-mid="${esc(m.id)}"><div class="m-kitchen">${esc(m.kitchen)}</div>
         <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
-          <div class="m-tags"><span class="customer-meta">${by}</span></div></div>
+          <div class="m-tags">${by}${badges}</div></div>
         <span class="m-status done">✓ ${esc(r.status)}</span><span class="rv-chev">›</span></div>`;
     }
-    const tot = Object.values(r.channels).reduce((s, c) => s + Number(c.finalGmv ?? c.gmv ?? 0), 0);
-    const ords = Object.values(r.channels).reduce((s, c) => s + Number(c.finalOrders ?? c.orders ?? 0), 0);
+    const tot = Object.values(r.channels).reduce((s, c) =>
+      s + Number(c.finalGmv ?? c.gmv ?? 0) + (c.extras || []).reduce((t, e) => t + Number(e.gmv || 0), 0), 0);
+    const ords = Object.values(r.channels).reduce((s, c) =>
+      s + Number(c.finalOrders ?? c.orders ?? 0) + (c.extras || []).length, 0);
     return `<div class="merchant-card" data-mid="${esc(m.id)}"><div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
-        <div class="m-tags"><span class="customer-meta">${by}</span></div></div>
+        <div class="m-tags">${by}${badges}</div></div>
       <div style="text-align:right"><div class="m-status done">${ords} orders</div><div class="m-total">${money(tot)}</div></div>
       <span class="rv-chev">›</span>
     </div>`;
-  }).join('') : '<p class="ab-note" style="margin-top:14px">No records for this day.</p>';
-  $('rv-list').querySelectorAll('.merchant-card').forEach((c) =>
+  }).join('');
+
+  /* Morning baselines of that day — context for the deducted closings.
+     View-only: a past baseline edit would re-open a billed comparison. */
+  const baselines = rv.offset ? (store._baselines || {}) : {};
+  const baseCards = Object.entries(baselines).map(([mid, sr]) => {
+    const m = findMerchant(mid);
+    if (!m) return '';
+    const parts = Object.entries(sr.channels)
+      .map(([ch, c]) => `${CH_META[ch].name} ${c.orders || 0} · ${money(Number(c.gmv || 0))}`).join(' · ');
+    return `<div class="merchant-card rv-base"><div class="m-kitchen">☀️</div>
+      <div class="m-info"><div class="m-name">${esc(m.brand)} — morning baseline</div>
+        <div class="m-tags"><span class="customer-meta">${esc(parts)} · deducted that night · view only</span></div></div></div>`;
+  }).join('');
+
+  /* Rows whose brand no longer matches the catalog (renamed in the sheet). */
+  const ghostCards = (rv.offset ? (rv.unmatched[rv.offset] || []) : []).map((sr) =>
+    `<div class="merchant-card rv-base"><div class="m-kitchen">${esc(sr.kitchen)}</div>
+      <div class="m-info"><div class="m-name">${esc(sr.brand)}</div>
+        <div class="m-tags"><span class="customer-meta">not in the current brand list — view in the sheet</span></div></div></div>`).join('');
+
+  /* Merchants with NO record that day — one tap starts a back-fill. */
+  const missing = rv.offset ? state.merchants.filter((m) => !m.disabled && !store[m.id]) : [];
+  const missingHTML = missing.length
+    ? `<div class="roster-group" style="margin-top:16px">No record for ${esc(dayLabel(rv.offset))}</div>`
+      + missing.map((m) => `<div class="merchant-card rv-add" data-mid="${esc(m.id)}">
+          <div class="m-kitchen">${esc(m.kitchen)}</div>
+          <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
+            <div class="m-tags"><span class="customer-meta">nothing saved that day</span></div></div>
+          <span class="m-status flag">＋ add record</span></div>`).join('')
+    : '';
+
+  $('rv-list').innerHTML = (cards + baseCards + ghostCards || (rv.offset
+      ? '<p class="ab-note" style="margin-top:14px">No records saved for this day.</p>'
+      : '<p class="ab-note" style="margin-top:14px">Nothing saved yet today — records appear here as you save them.</p>'))
+    + missingHTML;
+  $('rv-list').querySelectorAll('.merchant-card[data-mid]').forEach((c) =>
     c.onclick = () => openCapture(c.dataset.mid, 'evening', rv.offset, 'review'));
 }
 
@@ -751,7 +959,8 @@ function extrasHTML(ch, val, rec) {
   const list = val.extras || [];
   const collapsed = list.length > 3 && !rec.expandedExtras?.[ch];
   const rowHTML = (e, i) => {
-    const thumb = e.thumbUrl || e.photoUrl;
+    const thumb = e.thumbUrl || e.photoUrl
+      || (e.photoId ? `${CONFIG.apiBase}/api/photo/${esc(e.photoId)}` : null);
     const stateIcon = e.pendingAI ? '<span class="spinner sm"></span>'
       : e.dup ? '⚠' : e.conf === 'high' && !e.edited ? '✓' : e.edited ? '✎' : '⚠';
     return `<div class="extra-row ${e.edited ? 'edited' : ''} ${e.dup ? 'dup' : ''}">
@@ -804,6 +1013,13 @@ function channelBodyHTML(ch, val, base, mode) {
           ${statusLine}
           ${aiChannel ? `<span class="screen-note">${esc(val.screen || '')}</span>` : ''}
           <span class="tap-hint">👆 Tap photo to mark the correct number</span>
+        </div>
+        <div class="photo-btns"><button class="retake">Retake</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
+    : val.photoLink && val.photoId
+    ? `<div class="photo-row"><img class="thumb tap" src="${CONFIG.apiBase}/api/photo/${esc(val.photoId)}" alt="evidence" title="Tap to view or mark the correct number">
+        <div class="ai-note-col">
+          <span class="screen-note">🗂️ Photo on record — saved to Drive earlier.</span>
+          <span class="tap-hint">👆 Tap to view or mark the correct number</span>
         </div>
         <div class="photo-btns"><button class="retake">Retake</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
     : val.photoLink
@@ -1051,11 +1267,13 @@ function runExtraExtraction(ctx, ch, entry) {
    and logs the correction — this is the data the AI learns from over time. */
 function openViewer(ch) {
   const val = channelValue(ch);
-  if (!val || !val.photoUrl) return;
+  const src = val && (val.photoUrl
+    || (val.photoId ? `${CONFIG.apiBase}/api/photo/${val.photoId}` : null));
+  if (!src) return;
   state.viewer = { ch, pendingBox: null };
   const img = $('viewer-img');
   img.onload = placeViewerBoxes;
-  img.src = val.photoUrl;
+  img.src = src;
   $('viewer-choice').classList.add('hidden');
   $('viewer-overlay').classList.remove('hidden');
   if (img.complete) placeViewerBoxes();
@@ -1238,7 +1456,7 @@ function updateSaveBtn() {
   }
   if (coreReady()) {
     btn.disabled = false;
-    btn.textContent = offset ? `Save changes for ${dayLabel(offset)}`
+    btn.textContent = offset ? (rec.saveError ? '❗ Retry save' : `Save changes for ${dayLabel(offset)}`)
       : rec.saveError ? '❗ Retry save'
       : rec.status !== 'Operated' ? `Save as “${rec.status}”`
       : rec.serverSaved ? 'Save changes' : 'Confirm & save';
@@ -1260,12 +1478,10 @@ function channelSummaryText(rec) {
     }).join(', ');
 }
 
-/* Build the /api/records payload for TODAY's record. Past-day rows (Review)
-   must never reach this — write-back with audit is a separate work item. */
-function buildPayload(m, rec) {
-  if (state.current && state.current.offset && state.current.m.id === m.id) {
-    throw new Error('past-day records cannot be saved from this build');
-  }
+/* Build the /api/records payload for one record. salesDate is the record's own
+   business date — today's round or a Review day within the edit window; the
+   server validates the window and logs every changed cell to Corrections. */
+function buildPayload(m, rec, salesDate) {
   const channels = {};
   rec._sent = {};
   if (rec.status === 'Operated') {
@@ -1294,7 +1510,7 @@ function buildPayload(m, rec) {
       rec._sent[ch] = { val: v, extras: v.extras || [] };
     });
   }
-  return { recordId: rec.recordId, recordType: 'closing', salesDate: state.salesDate,
+  return { recordId: rec.recordId, recordType: 'closing', salesDate,
     confirmedAt: rec.confirmedAt, staffName: state.staff.name, staffId: state.staff.id || '',
     site: m.site, siteName: state.site.name, kitchen: m.kitchen, brand: m.brand,
     sfdcId: m.sfdcId, merchantType: m.type || '', kitchenStatus: rec.status,
@@ -1307,13 +1523,13 @@ function buildPayload(m, rec) {
 function adoptLinks(rec, resp) {
   Object.entries(resp.photoLinks || {}).forEach(([ch, link]) => {
     const v = (rec._sent[ch] && rec._sent[ch].val) || rec.channels[ch];
-    if (v && link) { v.photoLink = link; v.photoDirty = false; v.photoUrl = undefined; }
+    if (v && link) { v.photoLink = link; v.photoId = photoIdOf(link); v.photoDirty = false; v.photoUrl = undefined; }
   });
   Object.entries(resp.extrasLinks || {}).forEach(([ch, links]) => {
     const sent = rec._sent[ch] ? rec._sent[ch].extras : [];
     links.forEach((link, i) => {
       const e = sent[i];
-      if (e && link) { e.photoLink = link; e.photoDirty = false; e.photoUrl = undefined; }
+      if (e && link) { e.photoLink = link; e.photoId = photoIdOf(link); e.photoDirty = false; e.photoUrl = undefined; }
     });
   });
 }
@@ -1370,9 +1586,47 @@ async function saveRecord(mid) {
   };
 
   try {
-    finish(null, await postRecord(buildPayload(m, rec)));
+    finish(null, await postRecord(buildPayload(m, rec, state.salesDate)));
   } catch (e) {
     finish(e.name === 'AbortError' ? 'timed out after 90s' : e.message, null);
+  }
+}
+
+/* Review write-back: same POST, the record's own past date. The server matches
+   the deterministic Record ID, updates the row in place and logs every changed
+   cell (who/when/old/new) — or appends a fresh row when back-filling a missed
+   day. On failure we stay on the capture screen so the retry is one tap. */
+async function saveAmend(mid, offset, from) {
+  const m = findMerchant(mid);
+  const rec = recordsFor(offset)[mid];
+  if (!rec || rec.inFlight) return;
+  const date = dateForOffset(offset);
+  if (!rec.recordId) rec.recordId = recordIdFor(m, 'closing', date);
+  if (!rec.confirmedAt) rec.confirmedAt = nowStamp();
+  rec.staffName = rec.staffName || state.staff.name;
+  rec.inFlight = true;
+  rec.saveError = null;
+  updateSaveBtn();
+  try {
+    const resp = await postRecord(buildPayload(m, rec, date));
+    rec.inFlight = false;
+    rec.saved = true;
+    rec.serverSaved = true;
+    rec.saveError = null;
+    rec.amendedBy = state.staff.name;
+    rec.auditEdited = rec.auditEdited || !!resp.edited;
+    rec.billingFlag = resp.billing || '';
+    adoptLinks(rec, resp || {});
+    if (rec.status !== 'Operated') rec.channels = {};
+    toast(`${m.brand} — ${dayLabel(offset)} saved ✓, audit logged`
+      + (resp.billing === 'NO_BASELINE' ? ' · ⚠ no morning baseline that day' : ''));
+    if (from === 'review') { renderReview(); show('view-review'); }
+    else { renderChecklist(); show('view-checklist'); }
+  } catch (e) {
+    rec.inFlight = false;
+    rec.saveError = e.name === 'AbortError' ? 'timed out after 90s' : e.message;
+    toast(`❗ ${m.brand} NOT saved — ${rec.saveError}`);
+    updateSaveBtn();
   }
 }
 
@@ -1443,14 +1697,16 @@ $('btn-save').onclick = () => {
   }
   const rec = curRec();
   if (offset) {
-    /* Past-day edits stay demo-only: write-back with audit is a separate work
-       item, and a synthesized demo row must never become a billing row. */
-    rec.saved = true;
-    rec.draft = false;
-    rec.amendedBy = state.staff.name;
-    toast(`${m.brand} updated for ${dayLabel(offset)} ✓ — audit logged`);
-    if (from === 'review') { renderReview(); show('view-review'); }
-    else { renderChecklist(); show('view-checklist'); }
+    if (!coreReady()) return;
+    const doAmend = () => saveAmend(m.id, offset, from);
+    if (rec.status !== 'Operated' && recHasChannelData(rec)) {
+      askConfirm(`Save as “${rec.status}”?`,
+        `The readings recorded for ${m.brand} on ${dayLabel(offset)} (${channelSummaryText(rec)}) will be cleared. `
+        + 'Previous values stay in the audit log, and replaced photos go to the Drive trash.',
+        `Yes, save as ${rec.status}`, doAmend);
+      return;
+    }
+    doAmend();
     return;
   }
   if (!coreReady() && photosCaptured()) {

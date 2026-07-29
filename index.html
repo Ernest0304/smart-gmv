@@ -32,7 +32,13 @@
       <input class="search-input" id="reg-name" placeholder="Your full name" maxlength="60" autocomplete="name">
       <label class="field-label" style="margin-top:14px">Home site (optional)</label>
       <select class="search-input" id="reg-home"></select>
-      <p class="ab-note">You'll be added to the staff list as a part-timer. Your name goes on every record you save.</p>
+      <label class="field-label" style="margin-top:14px">Create your 4-digit PIN</label>
+      <div class="reg-pin-row">
+        <input class="search-input" id="reg-pin" type="password" inputmode="numeric" maxlength="4" placeholder="PIN" autocomplete="off">
+        <input class="search-input" id="reg-pin2" type="password" inputmode="numeric" maxlength="4" placeholder="Repeat PIN" autocomplete="off">
+      </div>
+      <p class="pin-error hidden" id="reg-pin-note">The two PINs don't match</p>
+      <p class="ab-note">You'll be added to the staff list as a part-timer, and this PIN logs you in from now on — don't share it. Your name goes on every record you save.</p>
       <div class="save-bar" style="position:static;padding:16px 0 0;background:none">
         <button class="btn-primary" id="reg-submit" disabled>Register &amp; continue</button>
       </div>
@@ -40,7 +46,8 @@
     </div>
     <div class="login-step hidden" id="login-step-pin">
       <button class="back-link" data-back="staff">‹ Not you?</button>
-      <label class="field-label">Hi <span id="pin-staff-name"></span>, enter your PIN</label>
+      <label class="field-label" id="pin-title">Enter your PIN</label>
+      <p class="pin-sub hidden" id="pin-sub"></p>
       <div class="pin-dots" id="pin-dots"><i></i><i></i><i></i><i></i></div>
       <div class="pin-pad" id="pin-pad"></div>
       <p class="pin-error hidden" id="pin-error">Wrong PIN — try again</p>
