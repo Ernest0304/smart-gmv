@@ -7,6 +7,36 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/* Live catalog (sites / merchants / staff / customers), loaded from
+   /api/catalog at boot. The sheet is the single source of truth — the app
+   ships with no roster or merchant data. */
+let DATA = null;
+
+async function loadCatalog() {
+  $('site-grid').innerHTML = '<p class="ab-note"><span class="spinner sm"></span> Loading sites…</p>';
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/catalog`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const raw = await r.json();
+    DATA = {
+      sites: raw.sites,
+      staff: raw.staff,
+      customers: raw.customers,
+      merchants: raw.merchants.map((m) => ({
+        site: m.facility, kitchen: m.kitchen, brand: m.brand, sfdcId: m.sfdcId,
+        overnight: m.overnight || undefined, disabled: m.disabled || undefined,
+        aigens: m.aigens || undefined,
+        type: m.kitchen === 'CR' ? 'Cloud Retail' : 'Kitchen',
+      })),
+    };
+    renderSites();
+  } catch (e) {
+    $('site-grid').innerHTML = `<p class="ab-note">⚠ Could not load the site list (${esc(e.message)}).</p>
+      <button class="btn-primary" id="btn-catalog-retry" style="margin-top:10px">Try again</button>`;
+    $('btn-catalog-retry').onclick = loadCatalog;
+  }
+}
+
 const state = {
   site: null, staff: null, pin: '',
   salesDate: null,                  // business date, frozen at login (before 06:00 = yesterday)
@@ -186,41 +216,134 @@ function renderSites() {
   });
 }
 function renderStaff() {
-  const home = MOCK.staff.filter((p) => p.home === state.site.id);
-  const others = MOCK.staff.filter((p) => p.home !== state.site.id);
+  const home = DATA.staff.filter((p) => p.home === state.site.id);
+  const others = DATA.staff.filter((p) => p.home !== state.site.id);
   const btn = (p) => `<button class="staff-btn" data-id="${esc(p.id)}"><span class="avatar">${esc(p.name[0])}</span>${esc(p.name)}
       ${p.partTimer ? '<span class="tag pt" style="margin-left:auto">PART-TIMER</span>' : (p.home && p.home !== state.site.id ? `<span class="tag pt" style="margin-left:auto">${esc(p.home)}</span>` : '')}</button>`;
   $('staff-list').innerHTML =
     (home.length ? `<div class="roster-group">${esc(state.site.name)} team</div>` + home.map(btn).join('') : '') +
-    `<div class="roster-group">Helping out today / part-timers</div>` + others.map(btn).join('');
-  $('staff-list').querySelectorAll('.staff-btn').forEach((b) => b.onclick = () => {
-    state.staff = MOCK.staff.find((p) => p.id === b.dataset.id);
+    `<div class="roster-group">Helping out today / part-timers</div>` + others.map(btn).join('') +
+    `<button class="staff-btn" id="btn-register"><span class="avatar">➕</span>I'm not on the list</button>`;
+  $('staff-list').querySelectorAll('.staff-btn[data-id]').forEach((b) => b.onclick = () => {
+    state.staff = DATA.staff.find((p) => p.id === b.dataset.id);
     $('pin-staff-name').textContent = state.staff.name;
     state.pin = '';
     paintPin();
     loginStep('pin');
   });
+  $('btn-register').onclick = openRegister;
 }
 function loginStep(step) {
-  ['site', 'staff', 'pin'].forEach((s) => $('login-step-' + s).classList.toggle('hidden', s !== step));
+  ['site', 'staff', 'register', 'pin'].forEach((s) => $('login-step-' + s).classList.toggle('hidden', s !== step));
 }
+
+/* ---------- self-registration (cross-site helpers / new part-timers) ---------- */
+function openRegister() {
+  $('reg-name').value = '';
+  $('reg-error').classList.add('hidden');
+  $('reg-home').innerHTML = `<option value="${esc(state.site.id)}">${esc(state.site.name)} (this site)</option>`
+    + DATA.sites.filter((s) => s.id !== state.site.id)
+        .map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')
+    + '<option value="">No fixed site</option>';
+  updateRegBtn();
+  loginStep('register');
+}
+$('reg-name').oninput = updateRegBtn;
+function updateRegBtn() {
+  $('reg-submit').disabled = $('reg-name').value.trim().length < 2;
+}
+async function submitRegistration(allowDuplicate) {
+  const name = $('reg-name').value.trim();
+  $('reg-submit').disabled = true;
+  $('reg-submit').textContent = 'Registering…';
+  $('reg-error').classList.add('hidden');
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/staff`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, homeSite: $('reg-home').value,
+        site: state.site.id, allowDuplicate: !!allowDuplicate }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 409 && d.existing) {
+      $('dup-detail').textContent = `“${d.existing.name}” is already on the staff list`
+        + (d.existing.home ? ` (home site ${d.existing.home})` : '') + '.';
+      $('dup-me-label').textContent = `That's me — continue as ${d.existing.name}`;
+      $('dup-new-label').textContent = `I'm a different ${name} — register anyway`;
+      $('dup-overlay').classList.remove('hidden');
+      $('dup-me').onclick = () => {
+        $('dup-overlay').classList.add('hidden');
+        state.staff = DATA.staff.find((p) => p.id === d.existing.id)
+          || { id: d.existing.id, name: d.existing.name, home: d.existing.home };
+        $('pin-staff-name').textContent = state.staff.name;
+        state.pin = '';
+        paintPin();
+        loginStep('pin');
+      };
+      $('dup-new').onclick = () => { $('dup-overlay').classList.add('hidden'); submitRegistration(true); };
+      $('dup-cancel').onclick = () => $('dup-overlay').classList.add('hidden');
+      return;
+    }
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    DATA.staff.push(d.staff);
+    state.staff = d.staff;
+    $('pin-staff-name').textContent = d.staff.name;
+    state.pin = '';
+    paintPin();
+    loginStep('pin');
+    toast(`Welcome, ${d.staff.name} — you're on the list now`);
+  } catch (e) {
+    $('reg-error').textContent = `Registration failed: ${e.message}`;
+    $('reg-error').classList.remove('hidden');
+  } finally {
+    $('reg-submit').disabled = false;
+    $('reg-submit').textContent = 'Register & continue';
+  }
+}
+$('reg-submit').onclick = () => submitRegistration(false);
 function paintPin() {
   [...$('pin-dots').children].forEach((d, i) => d.classList.toggle('filled', i < state.pin.length));
 }
+let pinChecking = false;
 function renderPinPad() {
   const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
   $('pin-pad').innerHTML = keys.map((k) => k === '' ? '<span></span>' : `<button class="pin-key" data-k="${k}">${k}</button>`).join('');
   $('pin-pad').querySelectorAll('.pin-key').forEach((b) => b.onclick = () => {
+    if (pinChecking) return;
     const k = b.dataset.k;
     $('pin-error').classList.add('hidden');
     if (k === '⌫') state.pin = state.pin.slice(0, -1);
     else if (state.pin.length < 4) state.pin += k;
     paintPin();
-    if (state.pin.length === 4) {
-      if (state.pin === state.staff.pin) { enterApp(); }
-      else { state.pin = ''; setTimeout(() => { paintPin(); $('pin-error').classList.remove('hidden'); }, 180); }
-    }
+    if (state.pin.length === 4) verifyPin();
   });
+}
+/* PINs are checked by the server against the Staff tab (blank PIN = default
+   1234 until real ones are filled). The app never sees anyone's PIN. */
+async function verifyPin() {
+  pinChecking = true;
+  const fail = (msg) => {
+    state.pin = '';
+    setTimeout(() => {
+      paintPin();
+      $('pin-error').textContent = msg;
+      $('pin-error').classList.remove('hidden');
+    }, 180);
+  };
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/staff/verify`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staffId: state.staff.id, pin: state.pin }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 403) { fail('Wrong PIN — try again'); return; }
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    state.staff = d.staff;
+    enterApp();
+  } catch (e) {
+    fail(`Could not verify (${e.message}) — try again`);
+  } finally {
+    pinChecking = false;
+  }
 }
 document.querySelectorAll('.back-link').forEach((b) => b.onclick = () => loginStep(b.dataset.back));
 
@@ -246,7 +369,6 @@ const numOrU = (v) => (v === '' || v === null || v === undefined ? undefined : N
    second device) sees ✓ instead of re-capturing — re-captures would still be
    in-place updates (deterministic ids), but staff shouldn't redo the round. */
 async function hydrateToday() {
-  if (!CONFIG.apiBase) return;
   try {
     const r = await fetch(`${CONFIG.apiBase}/api/records/today?site=${state.site.id}&date=${state.salesDate}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -411,15 +533,47 @@ function renderBrands() {
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
         <div class="m-tags">${m.disabled ? '<span class="tag off">DISABLED</span>' : '<span class="tag on">ACTIVE</span>'}${m.overnight ? '<span class="tag h24">24 HR</span>' : ''}</div></div>
-      <button class="mb-toggle ${m.disabled ? 'enable' : ''}" data-id="${esc(m.id)}">${m.disabled ? 'Enable' : 'Disable'}</button>
+      <div class="mb-btns">
+        <button class="mb-moon ${m.overnight ? 'on' : ''}" data-id="${esc(m.id)}" title="Operates outside 10 am – 10 pm — needs a morning GMV shot daily">🌙</button>
+        <button class="mb-toggle ${m.disabled ? 'enable' : ''}" data-id="${esc(m.id)}">${m.disabled ? 'Enable' : 'Disable'}</button>
+      </div>
     </div>`).join('') : '<p class="ab-note">No brands at this site yet.</p>';
+
+  /* Both toggles write the SFDC ID Map for real (col I Overnight / col J
+     Disabled): optimistic flip, revert loudly if the server says no. */
+  const patchFlag = async (m, body, revert) => {
+    try {
+      const r = await fetch(`${CONFIG.apiBase}/api/merchants`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, ...body }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    } catch (e) {
+      revert();
+      toast(`❗ Change NOT saved — ${e.message}`);
+    }
+    renderBrands();
+    renderChecklist();
+  };
+  $('mb-list').querySelectorAll('.mb-moon').forEach((b) => b.onclick = () => {
+    const m = findMerchant(b.dataset.id);
+    const src = DATA.merchants.find((x) => x.site === m.site && x.kitchen === m.kitchen && x.brand === m.brand);
+    const next = !m.overnight;
+    m.overnight = src.overnight = next || undefined;
+    renderBrands();
+    toast(next ? `${m.brand} marked outside-hours 🌙 — morning GMV shot needed daily`
+               : `${m.brand} back to normal hours`);
+    patchFlag(m, { overnight: next }, () => { m.overnight = src.overnight = !next || undefined; });
+  });
   $('mb-list').querySelectorAll('.mb-toggle').forEach((b) => b.onclick = () => {
     const m = findMerchant(b.dataset.id);
-    /* production: PATCH /api/merchants → ticks/unticks Disabled (col J) in SFDC ID Map */
     const src = DATA.merchants.find((x) => x.site === m.site && x.kitchen === m.kitchen && x.brand === m.brand);
-    m.disabled = src.disabled = !m.disabled ? true : undefined;
-    toast(m.disabled ? `${m.brand} disabled — hidden from new capture, history kept` : `${m.brand} re-enabled ✓`);
+    const next = !m.disabled;
+    m.disabled = src.disabled = next || undefined;
     renderBrands();
+    toast(next ? `${m.brand} disabled — hidden from new capture, history kept` : `${m.brand} re-enabled ✓`);
+    patchFlag(m, { disabled: next }, () => { m.disabled = src.disabled = !next || undefined; });
   });
 }
 
@@ -836,11 +990,6 @@ function runExtraction(ch, photoUrl) {
     if (ctx.mode === 'baseline' && !viewingCtx(ctx) && !$('view-checklist').classList.contains('hidden')) renderChecklist();
   };
 
-  if (!CONFIG.apiBase) {
-    setTimeout(() => settle(mockExtract(ch, ctx.mode === 'baseline' ? 'baseline' : 'closing', ctx.m, photoUrl)), 1000);
-    return;
-  }
-
   fetch(`${CONFIG.apiBase}/api/extract`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -879,13 +1028,6 @@ function runExtraExtraction(ctx, ch, entry) {
     markDupRefs(val);
     if (viewingCtx(ctx)) { renderChannelCards(); updateSaveBtn(); }
   };
-
-  if (!CONFIG.apiBase) {
-    const d = mockExtract(ch, 'closing', ctx.m, entry.photoUrl);
-    setTimeout(() => apply({ aiGmv: +((d.gmv || 25) / 8).toFixed(2), conf: 'high',
-      orderRef: 'DEMO-' + Math.floor(Math.random() * 900 + 100) }), 900);
-    return;
-  }
 
   fetch(`${CONFIG.apiBase}/api/extract`, {
     method: 'POST',
@@ -1227,7 +1369,6 @@ async function saveRecord(mid) {
     refreshAfterSave(mid);
   };
 
-  if (!CONFIG.apiBase) { setTimeout(() => finish(null, { billing: 'OK', photoLinks: {}, extrasLinks: {}, warnings: [] }), 700); return; }
   try {
     finish(null, await postRecord(buildPayload(m, rec)));
   } catch (e) {
@@ -1285,7 +1426,6 @@ async function saveBaseline(mid) {
     site: m.site, siteName: state.site.name, kitchen: m.kitchen, brand: m.brand,
     sfdcId: m.sfdcId, merchantType: m.type || '', kitchenStatus: 'Operated',
     channels, notes: '' };
-  if (!CONFIG.apiBase) { setTimeout(() => finish(null, { photoLinks: {} }), 700); return; }
   try {
     finish(null, await postRecord(payload));
   } catch (e) {
@@ -1423,32 +1563,47 @@ $('ab-brand').oninput = updateCreateBtn;
 function updateCreateBtn() {
   $('ab-create').disabled = !(ab.customer && $('ab-brand').value.trim().length >= 2);
 }
-$('ab-create').onclick = () => {
+$('ab-create').onclick = async () => {
   const brand = $('ab-brand').value.trim();
   const overnight = $('ab-overnight').checked;
-  /* production: POST /api/merchants → appends SFDC ID Map row:
-     B Facility / C Kitchen Number / D Brand / E SFDC ID (the picked Opportunity ID)
-     auto-filled; F–H copy the formulas from the row above; I Overnight = checkbox. */
-  DATA.merchants.push({
-    site: state.site.id, kitchen: ab.customer.kitchen, brand,
-    sfdcId: ab.customer.oppId,
-    type: ab.customer.kitchen === 'CR' ? 'Cloud Retail' : 'Kitchen',
-    overnight: overnight || undefined,
-    aigens: brand.toLowerCase().includes('wingstop') || undefined,
-  });
-  state.merchants = siteMerchants(state.site.id);
-  toast(`${brand} added ✓${overnight ? ' · marked outside-hours (morning baseline required)' : ''}`);
-  renderChecklist();
-  show('view-checklist');
+  const btn = $('ab-create');
+  btn.disabled = true;
+  btn.textContent = 'Creating…';
+  /* Appends a real SFDC ID Map row: B–E values, F–H formulas copied from the
+     row above, I = the outside-hours checkbox. Same row the sheet-side flow uses. */
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/merchants`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ facility: state.site.id, kitchen: ab.customer.kitchen,
+        brand, sfdcId: ab.customer.oppId, overnight }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    DATA.merchants.push({
+      site: d.merchant.facility, kitchen: d.merchant.kitchen, brand: d.merchant.brand,
+      sfdcId: d.merchant.sfdcId, overnight: d.merchant.overnight || undefined,
+      aigens: d.merchant.aigens || undefined,
+      type: d.merchant.kitchen === 'CR' ? 'Cloud Retail' : 'Kitchen',
+    });
+    state.merchants = siteMerchants(state.site.id);
+    toast(`${brand} added ✓ — row ${d.row} in SFDC ID Map${overnight ? ' · 🌙 morning GMV required' : ''}`);
+    renderChecklist();
+    show('view-checklist');
+  } catch (e) {
+    toast(`❗ Brand NOT created — ${e.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create brand record';
+  }
 };
 
 /* ---------- boot ---------- */
-if (CONFIG.apiBase) {
+{
   const b = $('mode-badge');
   b.textContent = 'LIVE · AI readings + saves to the GMV sheet — always double-check against the device screen';
   b.style.background = 'var(--green-bg)';
   b.style.color = 'var(--green)';
 }
-renderSites();
 renderPinPad();
 show('view-login');
+loadCatalog();

@@ -26,6 +26,18 @@
       <label class="field-label">Who are you?</label>
       <div class="staff-list" id="staff-list"></div>
     </div>
+    <div class="login-step hidden" id="login-step-register">
+      <button class="back-link" data-back="staff">‹ Back to the list</button>
+      <label class="field-label">Register yourself</label>
+      <input class="search-input" id="reg-name" placeholder="Your full name" maxlength="60" autocomplete="name">
+      <label class="field-label" style="margin-top:14px">Home site (optional)</label>
+      <select class="search-input" id="reg-home"></select>
+      <p class="ab-note">You'll be added to the staff list as a part-timer. Your name goes on every record you save.</p>
+      <div class="save-bar" style="position:static;padding:16px 0 0;background:none">
+        <button class="btn-primary" id="reg-submit" disabled>Register &amp; continue</button>
+      </div>
+      <p class="pin-error hidden" id="reg-error"></p>
+    </div>
     <div class="login-step hidden" id="login-step-pin">
       <button class="back-link" data-back="staff">‹ Not you?</button>
       <label class="field-label">Hi <span id="pin-staff-name"></span>, enter your PIN</label>
@@ -59,10 +71,10 @@
     </div>
   </div>
 
-  <div class="section-label hidden" id="sec-morning-label">☀️ Morning baseline <span class="sec-hint">24-hr merchants · shoot at 10 am</span></div>
+  <div class="section-label hidden" id="sec-morning-label">☀️ Morning GMV <span class="sec-hint">24-hr merchants · shoot at 10 am</span></div>
   <div class="merchant-list" id="list-morning"></div>
 
-  <div class="section-label">🌙 Closing capture</div>
+  <div class="section-label">🌙 Closing GMV</div>
   <div class="merchant-list" id="list-evening"></div>
   <div style="height:40px"></div>
 </div>
@@ -212,12 +224,23 @@
   </div>
 </div>
 
+<!-- ============ DUPLICATE NAME SHEET (self-registration) ============ -->
+<div class="overlay hidden" id="dup-overlay">
+  <div class="menu-sheet">
+    <h3 class="convert-title" id="dup-title">This name is already registered</h3>
+    <p class="convert-detail" id="dup-detail"></p>
+    <button class="menu-item" id="dup-me">✅ <span id="dup-me-label">That's me — continue</span></button>
+    <button class="menu-item" id="dup-new">➕ <span id="dup-new-label">I'm a different person — register anyway</span></button>
+    <button class="menu-cancel" id="dup-cancel">Cancel</button>
+  </div>
+</div>
+
 <!-- ============ TOAST ============ -->
 <div class="toast hidden" id="toast"></div>
 
+<!-- Catalog, roster and customers load live from /api/catalog at boot —
+     no merchant or staff data ships with this public repo. -->
 <script src="js/config.js"></script>
-<script src="js/data.js"></script>
-<script src="js/mock.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
