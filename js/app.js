@@ -607,7 +607,8 @@ async function hydrateTodayInner() {
       const m = state.merchants.find((x) => x.kitchen === sr.kitchen && x.brand === sr.brand);
       if (!m) return;
       if (sr.recordType === 'baseline') {
-        state.baselineMeta[m.id] = { recordId: sr.recordId, saved: true };
+        state.baselineMeta[m.id] = { recordId: sr.recordId, saved: true,
+          status: sr.status || 'Operated', savedStatus: sr.status || 'Operated' };
         Object.entries(sr.channels).forEach(([ch, c]) => {
           state.baselines[`${m.id}:${ch}`] = {
             finalOrders: numOrU(c.orders), finalGmv: numOrU(c.gmv),
@@ -680,7 +681,10 @@ function renderChecklist() {
   $('list-morning').innerHTML = overnight.map((m) => {
     const bm = state.baselineMeta[m.id] || {};
     const reading = baselineReading(m);
-    const st = bm.saved ? ['done', '✓ Opening GMV recorded']
+    const st = bm.saved ? ['done',
+        bm.savedStatus === 'Not operated' ? '✓ Not operated'
+        : bm.savedStatus === 'No Sales' ? '✓ No overnight sales'
+        : '✓ Opening GMV recorded']
       : bm.inFlight ? ['pending', '⬆ saving…']
       : bm.error ? ['flagred', ic('bang') + ' not saved — tap to retry']
       : reading ? ['pending', ic('loader') + ' AI reading…']
@@ -979,8 +983,9 @@ function renderReview() {
   const baseCards = Object.entries(baselines).map(([mid, sr]) => {
     const m = findMerchant(mid);
     if (!m) return '';
-    const parts = Object.entries(sr.channels)
+    const chParts = Object.entries(sr.channels)
       .map(([ch, c]) => `${CH_META[ch].name} ${c.orders || 0} · ${money(Number(c.gmv || 0))}`).join(' · ');
+    const parts = [sr.status, chParts].filter(Boolean).join(' — ');
     return `<div class="merchant-card rv-base"><div class="m-kitchen">${ic('sun')}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)} — opening GMV</div>
         <div class="m-tags"><span class="customer-meta">${esc(parts)} · deducted that night · view only</span></div></div></div>`;
@@ -1045,17 +1050,26 @@ $('btn-capture-back').onclick = () => {
   else { renderChecklist(); show('view-checklist'); }
 };
 
+function baseStatus(mid) { return state.baselineMeta[mid]?.status || 'Operated'; }
+
 function renderStatusChips() {
   const { m, mode } = state.current;
-  const rec = curRec();
-  if (mode === 'baseline') { $('status-row').classList.add('hidden'); return; }
   $('status-row').classList.remove('hidden');
-  const opts = ['Operated', 'No Sales', 'Not operated', 'Locked'];
+  const isBase = mode === 'baseline';
+  const meta = isBase ? (state.baselineMeta[m.id] = state.baselineMeta[m.id] || {}) : null;
+  const cur = isBase ? (meta.status || 'Operated') : curRec().status;
+  /* Opening statuses (Ernest 30 Jul): No Sales = zero overnight sales (0/0
+     opening recorded); Not operated = closed today, tonight auto-closes too.
+     A merely locked kitchen at 10 am = just skip the opening; tonight flags. */
+  const opts = isBase ? ['Operated', 'No Sales', 'Not operated']
+                      : ['Operated', 'No Sales', 'Not operated', 'Locked'];
   $('status-chips').innerHTML = opts.map((o) =>
-    `<button class="chip ${rec.status === o ? 'active' + (o === 'Operated' ? ' good' : '') : ''}" data-s="${o}">${o}</button>`).join('');
+    `<button class="chip ${cur === o ? 'active' + (o === 'Operated' ? ' good' : '') : ''}" data-s="${o}">${o}</button>`).join('');
   $('status-chips').querySelectorAll('.chip').forEach((b) => b.onclick = () => {
-    rec.status = b.dataset.s;
+    if (isBase) meta.status = b.dataset.s;
+    else curRec().status = b.dataset.s;
     renderStatusChips();
+    renderBaselineBanner();
     renderChannelCards();
     updateSaveBtn();
   });
@@ -1066,14 +1080,17 @@ function renderBaselineBanner() {
   const el = $('baseline-banner');
   if (offset) { el.classList.add('hidden'); return; }   // past-day edits: plain edit, no baseline logic
   if (mode === 'baseline') {
+    if (baseStatus(m.id) !== 'Operated') { el.classList.add('hidden'); return; }
     el.innerHTML = `${ic('sun')} <b>${esc(m.brand)} runs 24 hours.</b> Shoot each screen now — stored as today's opening GMV and deducted automatically tonight. Nothing is billed from this shot.`;
     el.classList.remove('hidden');
   } else if (m.overnight) {
     const bm = state.baselineMeta[m.id] || {};
-    el.innerHTML = baselineDone(m)
-      ? `${ic('moon')} 24-hr merchant — tonight's reading auto-deducts this morning's opening GMV. Both photos are kept as evidence.`
-      : bm.inFlight
+    el.innerHTML = bm.inFlight
       ? `${ic('loader')} <b>Opening GMV is saving right now.</b> Give it a moment — the save button unlocks as soon as it lands.`
+      : bm.saved && bm.savedStatus === 'Not operated'
+      ? `${ic('alert')} <b>This morning was saved as “Not operated”.</b> If the shop did open, tonight's reading cannot auto-deduct — it will be flagged for supervisor review.`
+      : bm.saved
+      ? `${ic('moon')} 24-hr merchant — tonight's reading auto-deducts this morning's opening GMV. Both photos are kept as evidence.`
       : `${ic('alert')} <b>No opening GMV today.</b> Tonight's reading cannot auto-deduct — it will be flagged for supervisor review. You can also go back and shoot the opening GMV first.`;
     el.classList.remove('hidden');
   } else {
@@ -1097,6 +1114,14 @@ function renderChannelCards() {
   const wrap = $('channel-cards');
   if (mode === 'evening' && rec.status !== 'Operated') {
     wrap.innerHTML = `<div class="baseline-banner" style="margin-top:16px">No sales fields needed for “${esc(rec.status)}”. Just confirm below — date, site, merchant and your name are recorded automatically.</div>`;
+    return;
+  }
+  if (mode === 'baseline' && baseStatus(m.id) !== 'Operated') {
+    wrap.innerHTML = `<div class="baseline-banner" style="margin-top:16px">${
+      baseStatus(m.id) === 'No Sales'
+        ? 'No overnight sales — a 0/0 opening is recorded, so tonight’s reading is billed in full. Just confirm below.'
+        : `Not operating today — tonight’s record for ${esc(m.brand)} is closed off as “Not operated” automatically. If the shop opens later, open tonight’s card and change its status.`
+    }</div>`;
     return;
   }
   const off = (ch) => CORE.includes(ch) && !coreFor(m).includes(ch);
@@ -1690,11 +1715,20 @@ function updateSaveBtn() {
   const btn = $('btn-save');
   if (mode === 'baseline') {
     const meta = state.baselineMeta[m.id] || {};
+    const bs = meta.status || 'Operated';
+    if (bs !== 'Operated') {
+      if (meta.inFlight) { btn.disabled = true; btn.textContent = '⬆ Saving…'; }
+      else if (meta.error) { btn.disabled = false; btn.textContent = '❗ Retry save'; }
+      else if (meta.saved && meta.savedStatus === bs) { btn.disabled = false; btn.textContent = `Saved as “${bs}” ✓ — back to list`; }
+      else { btn.disabled = false; btn.textContent = `Save opening as “${bs}”`; }
+      return;
+    }
     const settled = baselineSettled(m.id);
     const reading = baselineReading(m);
     if (meta.inFlight) { btn.disabled = true; btn.textContent = '⬆ Saving opening GMV…'; }
     else if (meta.error) { btn.disabled = false; btn.textContent = '❗ Retry opening GMV save'; }
-    else if (meta.saved && !baselineDirty(m.id)) { btn.disabled = false; btn.textContent = 'Opening GMV recorded ✓ — back to list'; }
+    else if (meta.saved && !baselineDirty(m.id)
+             && (meta.savedStatus || 'Operated') === 'Operated') { btn.disabled = false; btn.textContent = 'Opening GMV recorded ✓ — back to list'; }
     else if (settled.length) {
       btn.disabled = false;
       btn.textContent = meta.saved ? 'Update opening GMV & save'
@@ -1895,23 +1929,26 @@ async function saveBaseline(mid) {
   const m = findMerchant(mid);
   const meta = state.baselineMeta[mid] = state.baselineMeta[mid] || {};
   if (meta.inFlight) return;
+  const bs = meta.status || 'Operated';
   if (!meta.recordId) meta.recordId = recordIdFor(m, 'baseline');
   if (!meta.confirmedAt) meta.confirmedAt = nowStamp();
   const channels = {};
   const sent = {};
-  coreFor(m).forEach((ch) => {
-    const b = state.baselines[`${mid}:${ch}`];
-    if (!b || b.pendingAI || b.finalOrders === undefined || b.finalGmv === undefined) return;
-    const c = { aiOrders: b.aiOrders ?? null, aiGmv: b.aiGmv ?? null,
-      finalOrders: b.finalOrders, finalGmv: b.finalGmv,
-      edited: !!(b.editedOrders || b.editedGmv), conf: b.conf ?? null,
-      screen: (b.screen || '').slice(0, 400), zero: !!b.zero, marks: b.marks || [] };
-    if (b.photoDirty && b.photoUrl) c.photo = b.photoUrl;
-    else if (b.photoLink) c.photoLink = b.photoLink;
-    channels[ch] = c;
-    sent[ch] = b;
-  });
-  if (!Object.keys(channels).length) { toast('Shoot at least one screen first'); return; }
+  if (bs === 'Operated') {
+    coreFor(m).forEach((ch) => {
+      const b = state.baselines[`${mid}:${ch}`];
+      if (!b || b.pendingAI || b.finalOrders === undefined || b.finalGmv === undefined) return;
+      const c = { aiOrders: b.aiOrders ?? null, aiGmv: b.aiGmv ?? null,
+        finalOrders: b.finalOrders, finalGmv: b.finalGmv,
+        edited: !!(b.editedOrders || b.editedGmv), conf: b.conf ?? null,
+        screen: (b.screen || '').slice(0, 400), zero: !!b.zero, marks: b.marks || [] };
+      if (b.photoDirty && b.photoUrl) c.photo = b.photoUrl;
+      else if (b.photoLink) c.photoLink = b.photoLink;
+      channels[ch] = c;
+      sent[ch] = b;
+    });
+    if (!Object.keys(channels).length) { toast('Shoot at least one screen first'); return; }
+  }
   meta.inFlight = true;
   meta.error = null;
   // Non-blocking (supervisor feedback 30 Jul): head back to the list right
@@ -1928,12 +1965,29 @@ async function saveBaseline(mid) {
       toast(`❗ ${m.brand} opening GMV NOT saved — ${err}. Tap the red card to retry.`);
     } else {
       meta.saved = true; meta.error = null;
-      Object.entries(resp.photoLinks || {}).forEach(([ch, link]) => {
-        const b = sent[ch];
-        if (b && link) { b.photoLink = link; b.photoDirty = false; b.photoUrl = undefined; b._dirty = false; }
-      });
-      Object.values(sent).forEach((b) => { b._dirty = false; });
-      toast(`${m.brand} opening GMV recorded ✓ — deducted automatically tonight`);
+      meta.savedStatus = bs;
+      if (bs !== 'Operated') {
+        // any shots on the phone are superseded by the status save
+        coreFor(m).forEach((ch) => { delete state.baselines[`${mid}:${ch}`]; });
+        const autoSet = resp.autoClosing && resp.autoClosing.created;
+        if (autoSet) {
+          state.records[mid] = { status: 'Not operated', saved: true, serverSaved: true,
+            recordId: resp.autoClosing.closingId, staffName: state.staff.name,
+            channels: {}, expanded: {} };
+        }
+        toast(bs === 'No Sales'
+          ? `${m.brand}: no overnight sales recorded ✓ — tonight is billed in full`
+          : autoSet
+          ? `${m.brand} closed for today ✓ — tonight's record set to “Not operated”`
+          : `${m.brand} opening saved as “Not operated” ✓ — tonight's record already exists, please check it`);
+      } else {
+        Object.entries(resp.photoLinks || {}).forEach(([ch, link]) => {
+          const b = sent[ch];
+          if (b && link) { b.photoLink = link; b.photoDirty = false; b.photoUrl = undefined; b._dirty = false; }
+        });
+        Object.values(sent).forEach((b) => { b._dirty = false; });
+        toast(`${m.brand} opening GMV recorded ✓ — deducted automatically tonight`);
+      }
     }
     if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
     else {
@@ -1948,7 +2002,7 @@ async function saveBaseline(mid) {
   const payload = { recordId: meta.recordId, recordType: 'baseline', salesDate: state.salesDate,
     confirmedAt: meta.confirmedAt, staffName: state.staff.name, staffId: state.staff.id || '',
     site: m.site, siteName: state.site.name, kitchen: m.kitchen, brand: m.brand,
-    sfdcId: m.sfdcId, merchantType: m.type || '', kitchenStatus: 'Operated',
+    sfdcId: m.sfdcId, merchantType: m.type || '', kitchenStatus: bs,
     channels, notes: '' };
   try {
     finish(null, await postRecord(payload));
@@ -1961,7 +2015,21 @@ $('btn-save').onclick = () => {
   const { m, mode, offset, from } = state.current;
   if (mode === 'baseline') {
     const meta = state.baselineMeta[m.id] || {};
-    if (meta.saved && !baselineDirty(m.id) && !meta.error) { renderChecklist(); show('view-checklist'); return; }
+    const bs = meta.status || 'Operated';
+    if (bs !== 'Operated') {
+      if (meta.saved && meta.savedStatus === bs && !meta.error) { renderChecklist(); show('view-checklist'); return; }
+      const go = () => saveBaseline(m.id);
+      if (baselineHasShots(m)) {
+        askConfirm(`Save opening as “${bs}”?`,
+          `The screens shot this morning for ${m.brand} will be cleared. Previous values stay in the audit log.`,
+          `Yes, save as ${bs}`, go);
+        return;
+      }
+      go();
+      return;
+    }
+    if (meta.saved && !baselineDirty(m.id) && !meta.error
+        && (meta.savedStatus || 'Operated') === 'Operated') { renderChecklist(); show('view-checklist'); return; }
     saveBaseline(m.id);
     return;
   }
