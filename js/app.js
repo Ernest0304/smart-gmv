@@ -189,6 +189,7 @@ const ICONS = {
   zoom: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/>',
   hand: '<path d="M12 21c-4 0-6-2.5-6-6V9.5a1.5 1.5 0 0 1 3 0V6a1.5 1.5 0 0 1 3 0v5"/><path d="M12 11V4.5a1.5 1.5 0 0 1 3 0V12"/><path d="M15 12a1.5 1.5 0 0 1 3 1v2c0 4-2 6-6 6"/>',
   receipt: '<path d="M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21z"/><path d="M9 8h6M9 12h6"/>',
+  image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/>',
 };
 function ic(name, cls) {
   return `<svg class="ic ${cls || ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" `
@@ -204,40 +205,53 @@ function coreFor(m) {
 const OPTIONAL = ['others', 'catering', 'dinein', 'promodinein']; // collapsed, default 0
 const AI_CHANNELS = ['grab', 'fp'];               // only these call the AI engine (cost control)
 
-/* ---------- native camera / photo picker ---------- */
-const fileInput = document.createElement('input');
-fileInput.type = 'file';
-fileInput.accept = 'image/*';
-// NO capture attribute (reverted 29 Jul night, field feedback): forcing the
-// camera removed the gallery option, and staff genuinely burst-shoot in the
-// native camera first, then upload. The chooser sheet keeps both paths.
-fileInput.style.display = 'none';
-document.body.appendChild(fileInput);
+/* ---------- native camera / photo picker ----------
+   TWO explicit inputs, never one "the OS will offer both" input (Ernest's
+   video, 30 Jul): on Android 13+ Chrome routes accept="image/*" straight to
+   the system photo picker, which has NO camera entry — staff standing in
+   front of the tablet could only browse old shots. `capture` opens the
+   camera; the plain input keeps the burst-shoot-then-upload path that the
+   29 Jul camera-only build broke. Each gets its own button. */
+function makeInput(opts) {
+  const el = document.createElement('input');
+  el.type = 'file';
+  el.accept = 'image/*';
+  // setAttribute, NOT el.capture = … — the property assignment does not reach
+  // the HTML attribute the browser actually reads (caught in QA, 30 Jul)
+  if (opts.capture) el.setAttribute('capture', 'environment');
+  if (opts.multiple) el.multiple = true;
+  el.style.display = 'none';
+  document.body.appendChild(el);
+  return el;
+}
+
+const fileInput = makeInput({});                    // gallery / files
+const cameraInput = makeInput({ capture: true });   // straight to the camera
 let pendingChannel = null;
-fileInput.onchange = () => {
-  const file = fileInput.files && fileInput.files[0];
+const takeSingle = (input) => input.onchange = () => {
+  const file = input.files && input.files[0];
   const ch = pendingChannel;
-  fileInput.value = '';
+  input.value = '';
   if (!file || !ch) return;
   const reader = new FileReader();
   reader.onload = () => downscale(reader.result, 1600, 0.85).then((jpeg) => runExtraction(ch, jpeg));
   reader.readAsDataURL(file);
 };
+takeSingle(fileInput);
+takeSingle(cameraInput);
 function openPicker(ch) { pendingChannel = ch; fileInput.click(); }
+function openCamera(ch) { pendingChannel = ch; cameraInput.click(); }
 
-/* Pending-pickup orders: multi-select picker so staff can burst-shoot all the
-   locker orders in the native camera, then add them in one go. */
-const extrasInput = document.createElement('input');
-extrasInput.type = 'file';
-extrasInput.accept = 'image/*';
-extrasInput.multiple = true;
-extrasInput.style.display = 'none';
-document.body.appendChild(extrasInput);
+/* Pending-pickup orders: burst-shoot all the locker orders in the native
+   camera and add them in one go (gallery, multi-select), or shoot them one at
+   a time from here (camera) — same two-path rule as the summary shot. */
+const extrasInput = makeInput({ multiple: true });
+const extrasCamera = makeInput({ capture: true });
 let pendingExtrasChannel = null;
-extrasInput.onchange = () => {
-  const files = [...(extrasInput.files || [])];
+const takeExtras = (input) => input.onchange = () => {
+  const files = [...(input.files || [])];
   const ch = pendingExtrasChannel;
-  extrasInput.value = '';
+  input.value = '';
   if (!files.length || !ch) return;
   const val = channelValue(ch) || {};
   if (!channelValue(ch)) setChannelValue(ch, val);
@@ -257,7 +271,10 @@ extrasInput.onchange = () => {
     reader.readAsDataURL(file);
   });
 };
+takeExtras(extrasInput);
+takeExtras(extrasCamera);
 function openExtrasPicker(ch) { pendingExtrasChannel = ch; extrasInput.click(); }
+function openExtrasCamera(ch) { pendingExtrasChannel = ch; extrasCamera.click(); }
 
 /* Re-encode to JPEG ≤maxPx long edge: fixes iPhone HEIC uploads and cuts
    upload size + AI token cost without losing digit legibility. */
@@ -1289,7 +1306,10 @@ function extrasHTML(ch, val, rec) {
     <div class="extras-head">${head}
       <span class="extras-hint">${hint}</span></div>
     ${body}
-    <button class="extras-add" data-xadd="1">＋ Add pending order photos</button>
+    <div class="extras-add-row">
+      <button class="extras-add" data-xadd="cam">${ic('camera')} Shoot one</button>
+      <button class="extras-add" data-xadd="lib">${ic('image')} Add from gallery</button>
+    </div>
   </div>`;
 }
 
@@ -1332,8 +1352,11 @@ function channelBodyHTML(ch, val, base, mode) {
     : val.photoLink
     ? `<div class="photo-row"><span class="photo-chip">${ic('archive')} Photo on record</span>
         <div class="ai-note-col"><span class="screen-note">Saved to Drive earlier — retake only if it was wrong.</span></div>
-        <div class="photo-btns"><button class="retake">Retake</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
-    : `<div class="photo-slot"><span class="cam">${ic('camera')}</span> Snap or upload ${esc(CH_META[ch].name)} screen</div>
+        <div class="photo-btns"><button class="retake">Retake</button><button class="reupload">Upload</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
+    : `<div class="photo-choice">
+         <button class="photo-slot cam-btn"><span class="cam">${ic('camera')}</span> Take photo</button>
+         <button class="photo-slot up-btn"><span class="cam">${ic('image')}</span> Upload</button>
+       </div>
        <div class="no-photo-note">${aiChannel
          ? 'You can type the numbers first — but a photo is required as evidence before saving.'
          : 'This channel is manual — type the numbers, and attach a photo as evidence.'}</div>`;
@@ -1377,10 +1400,14 @@ function wireChannel(card, ch) {
     if (!invalid) inp.closest('.rf').classList.add('edited');
     updateSaveBtn();
   });
-  const slot = card.querySelector('.photo-slot');
-  if (slot) slot.onclick = () => openPicker(ch);
+  const camBtn = card.querySelector('.photo-slot.cam-btn');
+  if (camBtn) camBtn.onclick = () => openCamera(ch);
+  const upBtn = card.querySelector('.photo-slot.up-btn');
+  if (upBtn) upBtn.onclick = () => openPicker(ch);
   const rt = card.querySelector('.retake');
-  if (rt) rt.onclick = () => openPicker(ch);
+  if (rt) rt.onclick = () => openCamera(ch);       // retake = shoot it again
+  const reup = card.querySelector('.reupload');
+  if (reup) reup.onclick = () => openPicker(ch);   // ...or swap in a gallery shot
   const img = card.querySelector('img.thumb');
   if (img) img.onclick = () => openViewer(ch);
 
@@ -1405,8 +1432,8 @@ function wireChannel(card, ch) {
   };
 
   /* Pending-pickup extras wiring */
-  const xadd = card.querySelector('[data-xadd]');
-  if (xadd) xadd.onclick = () => openExtrasPicker(ch);
+  card.querySelectorAll('[data-xadd]').forEach((b) => b.onclick = () =>
+    (b.dataset.xadd === 'cam' ? openExtrasCamera(ch) : openExtrasPicker(ch)));
   const xexpand = card.querySelector('[data-xexpand]');
   if (xexpand) xexpand.onclick = () => {
     const rec = curRec();

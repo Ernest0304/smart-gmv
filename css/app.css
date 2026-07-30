@@ -470,3 +470,16 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
 }
 .resume-x:active { background: #F1EFEA; color: var(--ink); }
 .resume-sep { height: 1px; background: var(--line); margin: 16px 0; }
+
+/* ---------- two explicit photo paths (camera vs gallery, 30 Jul) ----------
+   Android 13+ routes accept="image/*" to the gallery-only system picker, so
+   the camera needs its own button rather than a chooser we cannot control. */
+.photo-choice { display: flex; gap: 10px; }
+.photo-choice .photo-slot { flex: 1; margin: 0; justify-content: center; }
+.extras-add-row { display: flex; gap: 10px; margin-top: 8px; }
+.extras-add-row .extras-add { flex: 1; display: inline-flex; align-items: center;
+  justify-content: center; gap: 6px; margin-top: 0; }
+.extras-add .ic { width: 16px; height: 16px; }
+.reupload { background: none; border: none; color: var(--blue); font-weight: 700;
+  font-size: 12.5px; cursor: pointer; }
+.reupload:active { filter: brightness(.9); }
