@@ -38,6 +38,50 @@ async function loadCatalog() {
   }
 }
 
+/* ---------- who used this device last (device-local) ----------
+   Ernest 30 Jul: staff shouldn't hunt for their own name every night. We keep
+   up to three recent sign-ins per device — enough to cover a shared site phone
+   rotation, invisible on a personal one. The PIN is NEVER stored: identity
+   still comes from the PIN, so a resume card on a shared phone saves the owner
+   a scroll and gets a stranger exactly nowhere. */
+const RECENT_KEY = 'smartgmv.recent';
+const RECENT_MAX = 3;
+
+function readRecent() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter((e) => e && e.id && e.site) : [];
+  } catch (e) {
+    return [];                       // private mode / storage blocked
+  }
+}
+function writeRecent(list) {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX)));
+  } catch (e) { /* nothing to do — the feature is a convenience */ }
+}
+function rememberUser() {
+  if (!state.staff || !state.site) return;
+  const entry = { id: state.staff.id, name: state.staff.name,
+    site: state.site.id, siteName: state.site.name, at: new Date().toISOString() };
+  // one slot per person: their latest site wins, so a cross-site helper never
+  // occupies two of the three cards
+  writeRecent([entry, ...readRecent().filter((e) => e.id !== entry.id)]);
+}
+function forgetUser(id) {
+  writeRecent(readRecent().filter((e) => e.id !== id));
+}
+function lastUsedLabel(iso) {
+  const then = new Date(iso);
+  if (isNaN(then)) return '';
+  const day = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  const days = Math.round((day(new Date()) - day(then)) / 86400000);
+  if (days <= 0) return Date.now() - then.getTime() < 2 * 3600e3 ? 'just now' : 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days} days ago`;
+  return 'a while ago';
+}
+
 const state = {
   site: null, staff: null, pin: '',
   pinMode: 'verify',                // verify | create | confirm (first-login PIN claim)
@@ -251,7 +295,48 @@ function toast(msg) {
 }
 
 /* ---------- login ---------- */
+/* Resume cards, newest first. Everything is re-validated against the live
+   catalog at tap time — a deactivated, renamed or removed person must not be
+   resurrected from a phone's memory. */
+function renderResume() {
+  const wrap = $('resume-wrap');
+  if (!wrap || !DATA) return;
+  const live = readRecent()
+    .map((e) => ({ e, p: DATA.staff.find((x) => x.id === e.id),
+                   s: DATA.sites.find((x) => x.id === e.site) }))
+    .filter((r) => r.p && r.s);
+  if (!live.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML =
+    `<label class="field-label">${live.length > 1 ? 'Recent on this device' : 'Continue as'}</label>`
+    + live.map(({ e, p, s }) => `<button class="staff-btn resume" data-id="${esc(e.id)}">
+        <span class="avatar">${esc(p.name[0])}</span>
+        <span class="resume-txt"><b>${esc(p.name)}</b>
+          <small>${esc(s.name)} · ${esc(s.id)} · last used ${esc(lastUsedLabel(e.at))}</small></span>
+        <span class="resume-x" data-forget="${esc(e.id)}" role="button" aria-label="Forget ${esc(p.name)}">✕</span>
+      </button>`).join('')
+    + '<div class="resume-sep"></div>';
+
+  wrap.querySelectorAll('.staff-btn.resume').forEach((b) => b.onclick = (ev) => {
+    const id = b.dataset.id;
+    if (ev.target.closest('[data-forget]')) {      // ✕ never signs anyone in
+      ev.stopPropagation();
+      forgetUser(id);
+      renderResume();
+      toast('Removed from this device');
+      return;
+    }
+    const row = live.find((r) => r.e.id === id);
+    if (!row) { renderResume(); return; }
+    state.site = row.s;
+    state.staffQuery = '';
+    $('staff-search').value = '';
+    renderStaff();                                 // so "Not you?" lands on a built list
+    proceedToPin(row.p);                           // fresh catalog record: name + needsPin
+  });
+}
+
 function renderSites() {
+  renderResume();
   $('site-grid').innerHTML = DATA.sites.map((s) => {
     const n = DATA.merchants.filter((m) => m.site === s.id).length;
     return `<button class="site-btn" data-site="${esc(s.id)}">${esc(s.name)}<small>${esc(s.id)} · ${n} merchants</small></button>`;
@@ -542,6 +627,7 @@ document.querySelectorAll('.back-link').forEach((b) => b.onclick = () => loginSt
 
 /* ---------- checklist ---------- */
 function enterApp() {
+  rememberUser();     // single funnel for PIN verify, PIN claim and registration
   state.merchants = siteMerchants(state.site.id);
   state.records = {};
   state.baselines = {};
@@ -748,6 +834,7 @@ function logout() {
   rv.loaded = false;
   rv.unmatched = {};
   paintPin();
+  renderResume();       // the person who just logged out is now the top card
   loginStep('site');
   show('view-login');
 }

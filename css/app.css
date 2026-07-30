@@ -457,3 +457,16 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
 .bl-range { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
 .bl-range .search-input { flex: 1; min-width: 0; }
 .bl-arrow { color: var(--ink-2); }
+
+/* ---------- "continue as" resume cards on the site step ---------- */
+.staff-btn.resume { width: 100%; text-align: left; margin-bottom: 8px; }
+.resume-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.resume-txt b { font-size: 15px; font-weight: 700; }
+.resume-txt small { font-weight: 500; color: var(--ink-3); font-size: 12px; }
+.resume-x {
+  margin-left: auto; flex: none; width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-3); font-size: 15px; font-weight: 700;
+}
+.resume-x:active { background: #F1EFEA; color: var(--ink); }
+.resume-sep { height: 1px; background: var(--line); margin: 16px 0; }
