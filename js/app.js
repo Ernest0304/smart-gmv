@@ -25,6 +25,7 @@ async function loadCatalog() {
       merchants: raw.merchants.map((m) => ({
         site: m.facility, kitchen: m.kitchen, brand: m.brand, sfdcId: m.sfdcId,
         overnight: m.overnight || undefined, disabled: m.disabled || undefined,
+        grabOn: m.grabOn !== false, fpOn: m.fpOn !== false,
         aigens: m.aigens || undefined,
         type: m.kitchen === 'CR' ? 'Cloud Retail' : 'Kitchen',
       })),
@@ -151,6 +152,11 @@ function ic(name, cls) {
 }
 
 const CORE = ['grab', 'fp'];                      // always expanded, required
+/* Per-merchant channel switches (ID Map cols K/L, Ernest 30 Jul): a brand that
+   only sells on one platform shows only that card and only it is required. */
+function coreFor(m) {
+  return CORE.filter((ch) => (ch === 'grab' ? m.grabOn !== false : m.fpOn !== false));
+}
 const OPTIONAL = ['others', 'catering', 'dinein', 'promodinein']; // collapsed, default 0
 const AI_CHANNELS = ['grab', 'fp'];               // only these call the AI engine (cost control)
 
@@ -266,13 +272,17 @@ function renderStaff() {
     const i = list.indexOf(sid);
     return i === -1 ? Infinity : i;
   };
-  const main = DATA.staff.filter((p) => prio(p) === 0);
-  const cover = DATA.staff.filter((p) => prio(p) > 0 && prio(p) !== Infinity)
+  const q = (state.staffQuery || '').trim().toLowerCase();
+  const hit = (p) => !q || p.name.toLowerCase().includes(q);
+  const main = DATA.staff.filter((p) => prio(p) === 0 && hit(p));
+  const cover = DATA.staff.filter((p) => prio(p) > 0 && prio(p) !== Infinity && hit(p))
     .sort((a, b) => prio(a) - prio(b));
-  const others = DATA.staff.filter((p) => prio(p) === Infinity);
+  const others = DATA.staff.filter((p) => prio(p) === Infinity && hit(p));
+  const none = q && !main.length && !cover.length && !others.length;
   const btn = (p) => `<button class="staff-btn" data-id="${esc(p.id)}"><span class="avatar">${esc(p.name[0])}</span>${esc(p.name)}
       ${p.partTimer ? '<span class="tag pt" style="margin-left:auto">PART-TIMER</span>' : (p.home && p.home !== sid ? `<span class="tag pt" style="margin-left:auto">${esc(p.home)}</span>` : '')}</button>`;
   $('staff-list').innerHTML =
+    (none ? `<p class="ab-note">No name matches “${esc(state.staffQuery.trim())}” — new here? Register below.</p>` : '') +
     (main.length ? `<div class="roster-group">${esc(state.site.name)} team</div>` + main.map(btn).join('') : '') +
     (cover.length ? `<div class="roster-group">Also covers ${esc(state.site.name)}</div>` + cover.map(btn).join('') : '') +
     (others.length ? `<div class="roster-group">Other sites / part-timers</div>` + others.map(btn).join('') : '') +
@@ -282,6 +292,10 @@ function renderStaff() {
   });
   $('btn-register').onclick = openRegister;
 }
+$('staff-search').oninput = () => {
+  state.staffQuery = $('staff-search').value;
+  renderStaff();
+};
 
 /* Route a chosen roster member to the right PIN screen: people whose Staff-tab
    PIN cell is still blank create their own on first login (no shared default,
@@ -412,9 +426,11 @@ function setPinBusy(b) {
 function renderPinPad() {
   const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
   $('pin-pad').innerHTML = keys.map((k) => k === '' ? '<span></span>' : `<button class="pin-key" data-k="${k}">${k}</button>`).join('');
-  $('pin-pad').querySelectorAll('.pin-key').forEach((b) => b.onclick = () => {
+  $('pin-pad').querySelectorAll('.pin-key').forEach((b) => b.onclick = () => pinKey(b.dataset.k));
+}
+function pinKey(k) {
+  {
     if (pinChecking) return;
-    const k = b.dataset.k;
     $('pin-error').classList.add('hidden');
     if (k === '⌫') state.pin = state.pin.slice(0, -1);
     else if (state.pin.length < 4) state.pin += k;
@@ -441,8 +457,16 @@ function renderPinPad() {
     } else {
       verifyPin();
     }
-  });
+  }
 }
+/* Hardware keyboard on the PIN screen (Ernest 30 Jul): digits + Backspace,
+   desktop browsers and paired keyboards. */
+document.addEventListener('keydown', (e) => {
+  if ($('login-step-pin').classList.contains('hidden')) return;
+  if (!$('view-login') || $('view-login').classList.contains('hidden')) return;
+  if (/^[0-9]$/.test(e.key)) { e.preventDefault(); pinKey(e.key); }
+  else if (e.key === 'Backspace') { e.preventDefault(); pinKey('⌫'); }
+});
 const pinFail = (msg) => {
   state.pin = '';
   setTimeout(() => {
@@ -613,10 +637,10 @@ function merchantDone(m) {
    sitting in phone memory is not evidence yet. */
 function baselineDone(m) { return !!state.baselineMeta[m.id]?.saved; }
 function baselineReading(m) {
-  return CORE.some((ch) => state.baselines[`${m.id}:${ch}`]?.pendingAI);
+  return coreFor(m).some((ch) => state.baselines[`${m.id}:${ch}`]?.pendingAI);
 }
 function baselineHasShots(m) {
-  return CORE.some((ch) => channelHasData(state.baselines[`${m.id}:${ch}`]));
+  return coreFor(m).some((ch) => channelHasData(state.baselines[`${m.id}:${ch}`]));
 }
 /* Confirmed by staff but not (yet) on the server — the record a licensee would
    never get billed for. These must stay loudly visible until saved. */
@@ -791,10 +815,12 @@ function renderBrands() {
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
         <div class="m-tags">${m.disabled ? '<span class="tag off">DISABLED</span>' : '<span class="tag on">ACTIVE</span>'}${m.overnight ? '<span class="tag h24">24 HR</span>' : ''}</div></div>
       <div class="mb-btns">
+        <button class="mb-ch ${m.grabOn !== false ? 'on' : ''}" data-ch="grab" data-id="${esc(m.id)}" title="GrabFood channel on/off">G</button>
+        <button class="mb-ch ${m.fpOn !== false ? 'on' : ''}" data-ch="fp" data-id="${esc(m.id)}" title="foodpanda channel on/off">F</button>
         <button class="mb-moon ${m.overnight ? 'on' : ''}" data-id="${esc(m.id)}" title="Operates outside 10 am – 10 pm — needs a daily opening GMV shot">${ic('moon')}</button>
         <button class="mb-toggle ${m.disabled ? 'enable' : ''}" data-id="${esc(m.id)}">${m.disabled ? 'Enable' : 'Disable'}</button>
       </div>
-    </div>`).join('') : '<p class="ab-note">No brands at this site yet.</p>';
+    </div>`).join('') : `<p class="ab-note">No brands at ${esc(state.site.name)} (${esc(state.site.id)}) yet — this list fills up once the first brand is added via ☰ → Add new brand.</p>`;
 
   /* Both toggles write the SFDC ID Map for real (col I Overnight / col J
      Disabled): optimistic flip, revert loudly if the server says no. */
@@ -813,6 +839,28 @@ function renderBrands() {
     renderBrands();
     renderChecklist();
   };
+  $('mb-list').querySelectorAll('.mb-ch').forEach((b) => b.onclick = async () => {
+    const m = findMerchant(b.dataset.id);
+    const src2 = DATA.merchants.find((x) => x.site === m.site && x.kitchen === m.kitchen && x.brand === m.brand);
+    const ch = b.dataset.ch;
+    const key = ch === 'grab' ? 'grabOn' : 'fpOn';
+    const next = !(m[key] !== false);
+    const otherOn = ch === 'grab' ? m.fpOn !== false : m.grabOn !== false;
+    if (!next && !otherOn) { toast('A brand needs at least one delivery channel — disable the brand instead'); return; }
+    m[key] = src2[key] = next;
+    renderBrands();
+    try {
+      const r = await fetch(`${CONFIG.apiBase}/api/merchants`, { method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, [ch]: next }) });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      toast(`${m.brand}: ${ch === 'grab' ? 'GrabFood' : 'foodpanda'} ${next ? 'on' : 'off'} ✓`);
+    } catch (e) {
+      m[key] = src2[key] = !next;
+      renderBrands();
+      toast(`❗ Could not update ${m.brand} — ${e.message}`);
+    }
+  });
   $('mb-list').querySelectorAll('.mb-moon').forEach((b) => b.onclick = () => {
     const m = findMerchant(b.dataset.id);
     const src = DATA.merchants.find((x) => x.site === m.site && x.kitchen === m.kitchen && x.brand === m.brand);
@@ -1051,7 +1099,8 @@ function renderChannelCards() {
     wrap.innerHTML = `<div class="baseline-banner" style="margin-top:16px">No sales fields needed for “${esc(rec.status)}”. Just confirm below — date, site, merchant and your name are recorded automatically.</div>`;
     return;
   }
-  const chans = mode === 'baseline' ? CORE : m.channels;
+  const off = (ch) => CORE.includes(ch) && !coreFor(m).includes(ch);
+  const chans = (mode === 'baseline' ? coreFor(m) : m.channels.filter((ch) => !off(ch)));
   wrap.innerHTML = chans.map((ch) => {
     const meta = CH_META[ch];
     const val = channelValue(ch) || {};
@@ -1611,22 +1660,22 @@ function coreReady() {
   if (mode === 'baseline') return false;   // baselines use their own flow below
   if (rec.status !== 'Operated') return true;
   if (invalidFields(rec) || extrasBlockers(rec).length) return false;
-  return CORE.every((ch) => {
+  return coreFor(state.current.m).every((ch) => {
     const v = rec.channels[ch];
     return v && v.finalOrders !== undefined && v.finalGmv !== undefined;
   });
 }
 function missingPhotos() {
   const rec = curRec();
-  return CORE.filter((ch) => rec.channels[ch] && !rec.channels[ch].photoUrl && !rec.channels[ch].photoLink);
+  return coreFor(state.current.m).filter((ch) => rec.channels[ch] && !rec.channels[ch].photoUrl && !rec.channels[ch].photoLink);
 }
 function photosCaptured() {
   /* All CORE screens photographed (reads may still be in flight). */
   const rec = curRec();
-  return rec.status === 'Operated' && CORE.every((ch) => rec.channels[ch]?.photoUrl || rec.channels[ch]?.photoLink);
+  return rec.status === 'Operated' && coreFor(state.current.m).every((ch) => rec.channels[ch]?.photoUrl || rec.channels[ch]?.photoLink);
 }
 function baselineShots(mid) {
-  return CORE.map((ch) => state.baselines[`${mid}:${ch}`]).filter(Boolean);
+  return coreFor(findMerchant(mid)).map((ch) => state.baselines[`${mid}:${ch}`]).filter(Boolean);
 }
 function baselineSettled(mid) {
   return baselineShots(mid).filter((b) => !b.pendingAI
@@ -1649,7 +1698,7 @@ function updateSaveBtn() {
     else if (settled.length) {
       btn.disabled = false;
       btn.textContent = meta.saved ? 'Update opening GMV & save'
-        : `Confirm opening GMV & save${settled.length < CORE.length ? ' (partial)' : ''}`;
+        : `Confirm opening GMV & save${settled.length < coreFor(m).length ? ' (partial)' : ''}`;
     }
     else if (reading) { btn.disabled = true; btn.textContent = 'Reading… hang on a moment'; }
     else { btn.disabled = true; btn.textContent = 'Shoot the screens to start'; }
@@ -1850,7 +1899,7 @@ async function saveBaseline(mid) {
   if (!meta.confirmedAt) meta.confirmedAt = nowStamp();
   const channels = {};
   const sent = {};
-  CORE.forEach((ch) => {
+  coreFor(m).forEach((ch) => {
     const b = state.baselines[`${mid}:${ch}`];
     if (!b || b.pendingAI || b.finalOrders === undefined || b.finalGmv === undefined) return;
     const c = { aiOrders: b.aiOrders ?? null, aiGmv: b.aiGmv ?? null,
@@ -2136,7 +2185,7 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 /* ---------- monthly billing (menu-only view — capture stays the app's core) ---------- */
-const bl = { month: null };
+const bl = { month: null, custom: false, from: '', to: '', q: '', data: null };
 function monthLabel(ym) {
   const [y, mo] = ym.split('-');
   return new Date(Number(y), Number(mo) - 1, 1)
@@ -2150,6 +2199,8 @@ function billingMonths() {
 }
 function openBilling() {
   bl.month = billingMonths()[0];
+  bl.custom = false;
+  bl.q = '';
   renderBillingShell();
   show('view-billing');
   loadBilling();
@@ -2157,15 +2208,33 @@ function openBilling() {
 function renderBillingShell() {
   $('bl-sub').textContent = `${state.site.name} · ${state.site.id}`;
   $('bl-months').innerHTML = billingMonths().map((m) =>
-    `<button class="chip ${bl.month === m ? 'active' : ''}" data-m="${m}">${esc(monthLabel(m))}</button>`).join('');
+    `<button class="chip ${!bl.custom && bl.month === m ? 'active' : ''}" data-m="${m}">${esc(monthLabel(m))}</button>`).join('')
+    + `<button class="chip ${bl.custom ? 'active' : ''}" data-m="custom">Custom range</button>`;
   $('bl-months').querySelectorAll('.chip').forEach((c) => c.onclick = () => {
-    bl.month = c.dataset.m; renderBillingShell(); loadBilling();
+    if (c.dataset.m === 'custom') { bl.custom = true; renderBillingShell(); return; }
+    bl.custom = false;
+    bl.month = c.dataset.m;
+    renderBillingShell();
+    loadBilling();
   });
+  $('bl-range').classList.toggle('hidden', !bl.custom);
+  if (bl.custom && !$('bl-from').value) {
+    $('bl-from').value = bl.from || `${bl.month}-01`;
+    $('bl-to').value = bl.to || dateForOffset(0);
+  }
 }
+$('bl-apply').onclick = () => {
+  const f = $('bl-from').value, t = $('bl-to').value;
+  if (!f || !t || f > t) { toast('Pick a valid range — from must be on or before to'); return; }
+  bl.from = f; bl.to = t;
+  loadBilling();
+};
 async function loadBilling() {
   $('bl-body').innerHTML = '<p class="ab-note"><span class="spinner sm"></span> Adding up the month…</p>';
   try {
-    const r = await fetch(`${CONFIG.apiBase}/api/billing?site=${state.site.id}&month=${bl.month}`);
+    const qs = bl.custom ? `from=${bl.from || $('bl-from').value}&to=${bl.to || $('bl-to').value}`
+                         : `month=${bl.month}`;
+    const r = await fetch(`${CONFIG.apiBase}/api/billing?site=${state.site.id}&${qs}`);
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
     renderBilling(d);
@@ -2176,13 +2245,18 @@ async function loadBilling() {
   }
 }
 function renderBilling(d) {
+  bl.data = d;
+  const label = d.label && d.label.includes('→') ? d.label : monthLabel(d.month || d.label);
   if (!d.merchants.length) {
-    $('bl-body').innerHTML = `<div class="empty-note">No closing records for ${esc(monthLabel(d.month))} yet.</div>`;
+    $('bl-body').innerHTML = `<div class="empty-note">No closing records for ${esc(label)} yet.</div>`;
     return;
   }
+  const q = bl.q.trim().toLowerCase();
+  const shown = q ? d.merchants.filter((m) =>
+    m.brand.toLowerCase().includes(q) || m.kitchen.toLowerCase().includes(q)) : d.merchants;
   const t = d.totals;
   const manual = (m) => m.othersGmv + m.cateringGmv + m.dineinGmv + m.promoDineinGmv;
-  const rows = d.merchants.map((m) => `<div class="merchant-card" style="cursor:default">
+  const rows = shown.map((m) => `<div class="merchant-card" style="cursor:default">
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
         <div class="m-tags"><span class="bl-days">${m.days} day${m.days > 1 ? 's' : ''} recorded</span></div></div>
@@ -2196,12 +2270,22 @@ function renderBilling(d) {
     : `<p class="ab-note" style="margin-top:18px">${ic('check')} No flags this month — every record is clean.</p>`;
   $('bl-body').innerHTML = `
     <div class="progress-card" style="display:block">
-      <span class="bl-cap">Site total · ${esc(monthLabel(d.month))} · billable</span>
+      <span class="bl-cap">Site total · ${esc(label)} · billable</span>
       <div class="bl-big">${t.totalOrders.toLocaleString()} orders · ${money(t.totalGmv)}</div>
       <div class="bl-mini">Grab ${t.billableGrabOrders.toLocaleString()} · ${money(t.billableGrabGmv)}&nbsp;&nbsp;foodpanda ${t.billableFpOrders.toLocaleString()} · ${money(t.billableFpGmv)}&nbsp;&nbsp;manual ${(t.othersOrders + t.cateringOrders + t.dineinOrders + t.promoDineinOrders).toLocaleString()} · ${money(t.othersGmv + t.cateringGmv + t.dineinGmv + t.promoDineinGmv)}</div>
     </div>
-    <div class="merchant-list" style="margin-top:14px">${rows}</div>
+    <input class="search-input" id="bl-search" placeholder="Filter merchants…" value="${esc(bl.q)}" style="margin-top:14px">
+    <div class="merchant-list" style="margin-top:10px">${rows}</div>
+    ${q && !shown.length ? '<p class="ab-note">No merchant matches the filter.</p>' : ''}
     ${flags}`;
+  $('bl-search').oninput = () => {
+    bl.q = $('bl-search').value;
+    const pos = $('bl-search').selectionStart;
+    renderBilling(bl.data);
+    const el = $('bl-search');
+    el.focus();
+    el.setSelectionRange(pos, pos);
+  };
 }
 $('menu-billing').onclick = () => { $('menu-overlay').classList.add('hidden'); openBilling(); };
 $('btn-billing-back').onclick = () => { renderChecklist(); show('view-checklist'); };
