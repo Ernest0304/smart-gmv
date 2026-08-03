@@ -1488,7 +1488,7 @@ function channelBodyHTML(ch, val, base, mode) {
        </div>
        <div class="no-photo-note">${aiChannel
          ? 'You can type the numbers first — but a photo is required as evidence before saving.'
-         : 'This channel is manual — type the numbers, and attach a photo as evidence.'}</div>`;
+         : 'This channel is manual — type the numbers. A photo is optional here.'}</div>`;
   let extra = '';
   if (mode === 'baseline' && channelHasData(val)) {
     extra = `<div class="deduct-box">${ic('sun')} Stored as today's opening GMV — deducted tonight. Not billed.</div>`;
@@ -1985,12 +1985,10 @@ function updateSaveBtn() {
   if (rec.inFlight) { btn.disabled = true; btn.textContent = '⬆ Saving…'; return; }
   if (state.site && state.site.id === CATERING_SITE) {
     const v = rec.channels.catering || {};
-    const ready = Number.isFinite(Number(v.finalOrders)) && Number.isFinite(Number(v.finalGmv))
-      && (v.photoUrl || v.photoLink);
+    const ready = Number.isFinite(Number(v.finalOrders)) && Number.isFinite(Number(v.finalGmv));
     btn.disabled = !ready;
     btn.textContent = rec.saveError ? '❗ Retry catering save'
       : !Number.isFinite(Number(v.finalGmv)) ? 'Enter the catering figures'
-      : !(v.photoUrl || v.photoLink) ? 'Attach the catering evidence'
       : rec.serverSaved ? 'Save changes' : `Save catering for ${rec.salesDate || state.salesDate}`;
     return;
   }
@@ -2723,7 +2721,6 @@ async function saveCatering(mid) {
   const orders = Number(v.finalOrders);
   const gmv = Number(v.finalGmv);
   if (!Number.isFinite(orders) || !Number.isFinite(gmv)) { toast('Enter the catering orders and sales first'); return; }
-  if (!v.photoUrl && !v.photoLink) { toast('A catering record needs photo evidence'); return; }
   const date = rec.salesDate || state.salesDate;
   if (!rec.recordId) rec.recordId = recordIdFor(m, 'closing', date);
   if (!rec.confirmedAt) rec.confirmedAt = nowStamp();
