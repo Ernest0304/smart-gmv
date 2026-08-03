@@ -135,10 +135,12 @@ const state = {
   records: {},                      // merchantId -> record (today)
   history: {},                      // dayOffset -> { merchantId -> record } (past days, editable)
   baselines: {},                    // `${mid}:${ch}` -> baseline reading
+  // `saved` means the SERVER acknowledged the row — a shot sitting in phone
+  // memory is not evidence yet, so nothing keys off local state alone.
   baselineMeta: {},                 // merchantId -> { recordId, confirmedAt, saved, inFlight, error }
   hydrateError: null,               // set when today's saved records could not be loaded
   current: null,                    // { m, mode, offset, from }
-  viewer: null,                     // { ch, candidate }
+  viewer: null,                     // { ch, pendingBox }
 };
 
 /* ---------- record identity ----------
@@ -199,12 +201,12 @@ function siteMerchants(siteId) {
     .map((m, i) => ({
       ...m,
       id: `${m.site}-${m.kitchen}-${i}`,
-      channels: channelsFor(m, siteId),
+      channels: channelsFor(siteId),
     }))
     .sort((a, b) => (a.kitchen === 'CR') - (b.kitchen === 'CR') || a.kitchen.localeCompare(b.kitchen, undefined, { numeric: true }));
 }
 const CATERING_SITE = 'CATERING';   // pseudo-facility: catering has its own entry
-function channelsFor(m, siteId) {
+function channelsFor(siteId) {
   if (siteId === CATERING_SITE) return ['catering'];   // one line, nothing else
   const ch = ['grab', 'fp', 'others', 'catering'];
   if (siteId === 'S12') ch.push('dinein', 'promodinein');
@@ -232,7 +234,6 @@ const ICONS = {
   check: '<path d="M4.5 12.5l5 5 10-11"/>',
   file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
   archive: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v11h14V9M10 13h4"/>',
-  zoom: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/>',
   hand: '<path d="M12 21c-4 0-6-2.5-6-6V9.5a1.5 1.5 0 0 1 3 0V6a1.5 1.5 0 0 1 3 0v5"/><path d="M12 11V4.5a1.5 1.5 0 0 1 3 0V12"/><path d="M15 12a1.5 1.5 0 0 1 3 1v2c0 4-2 6-6 6"/>',
   receipt: '<path d="M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21z"/><path d="M9 8h6M9 12h6"/>',
   image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/>',
@@ -818,18 +819,11 @@ async function hydrateTodayInner() {
     toast(`⚠ Could not check the server for today's saved records (${e.message})`);
   }
 }
-function channelFilled(rec, ch) {
-  const c = rec.channels[ch];
-  return c && (c.photoUrl || c.finalOrders !== undefined || c.finalGmv !== undefined || c.orders !== undefined);
-}
 function merchantDone(m) {
   const r = state.records[m.id];
   if (!r || !r.saved) return false;
   return true;
 }
-/* "Baseline done" = the SERVER acknowledged the row, nothing less. A shot
-   sitting in phone memory is not evidence yet. */
-function baselineDone(m) { return !!state.baselineMeta[m.id]?.saved; }
 function baselineReading(m) {
   return coreFor(m).some((ch) => state.baselines[`${m.id}:${ch}`]?.pendingAI);
 }
@@ -1012,7 +1006,7 @@ function openBrands() {
   renderBrands();
   show('view-brands');
 }
-$('btn-brands-back').onclick = () => { renderChecklist(); show('view-checklist'); };
+$('btn-brands-back').onclick = () => { backToChecklist(); };
 function renderBrands() {
   const list = state.merchants;   // full roster incl. disabled, kitchen order
   $('mb-list').innerHTML = list.length ? list.map((m) => `
@@ -1103,7 +1097,7 @@ function openReview() {
   show('view-review');
   loadHistory(true);   // fresh read on every open — another phone may have saved since
 }
-$('btn-review-back').onclick = () => { renderChecklist(); show('view-checklist'); };
+$('btn-review-back').onclick = () => { backToChecklist(); };
 
 /* Pull the last 6 business days for this site in ONE call and bucket them by
    offset. Baseline rows are kept separately for display; rows whose brand no
@@ -1261,7 +1255,7 @@ function openCapture(mid, mode, offset = 0, from = 'checklist') {
 }
 $('btn-capture-back').onclick = () => {
   if (state.current && state.current.from === 'review') { renderReview(); show('view-review'); }
-  else { renderChecklist(); show('view-checklist'); }
+  else { backToChecklist(); }
 };
 
 function baseStatus(mid) { return state.baselineMeta[mid]?.status || 'Operated'; }
@@ -2098,11 +2092,19 @@ function refreshAfterSave(mid) {
   if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
 }
 
-async function postRecord(payload) {
+/* Every record write goes through here: a 90s abort so a stalled upload can't
+   leave the button spinning forever, and a single place that turns a non-2xx
+   into a thrown message the callers surface verbatim. */
+function backToChecklist() {          // the one way back to tonight's round
+  renderChecklist();
+  show('view-checklist');
+}
+
+async function postRecord(payload, path = '/api/records') {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 90000);
   try {
-    const r = await api('/api/records', {
+    const r = await api(path, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload), signal: ctrl.signal });
     const d = await r.json().catch(() => ({}));
@@ -2176,7 +2178,7 @@ async function saveAmend(mid, offset, from) {
     toast(`${m.brand} — ${dayLabel(offset)} saved ✓, audit logged`
       + (resp.billing === 'NO_BASELINE' ? ' · ⚠ no opening GMV that day' : ''));
     if (from === 'review') { renderReview(); show('view-review'); }
-    else { renderChecklist(); show('view-checklist'); }
+    else { backToChecklist(); }
   } catch (e) {
     rec.inFlight = false;
     rec.saveError = e.name === 'AbortError' ? 'timed out after 90s' : e.message;
@@ -2215,7 +2217,7 @@ async function saveBaseline(mid) {
   // away — the morning card shows ⬆ saving… and flips ✓/❗ when the server answers.
   const onBaselineView = !$('view-capture').classList.contains('hidden')
     && state.current && state.current.mode === 'baseline' && state.current.m.id === m.id;
-  if (onBaselineView) { renderChecklist(); show('view-checklist'); }
+  if (onBaselineView) { backToChecklist(); }
   else if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
 
   const finish = (err, resp) => {
@@ -2277,7 +2279,7 @@ $('btn-save').onclick = () => {
     const meta = state.baselineMeta[m.id] || {};
     const bs = meta.status || 'Operated';
     if (bs !== 'Operated') {
-      if (meta.saved && meta.savedStatus === bs && !meta.error) { renderChecklist(); show('view-checklist'); return; }
+      if (meta.saved && meta.savedStatus === bs && !meta.error) { backToChecklist(); return; }
       const go = () => saveBaseline(m.id);
       if (baselineHasShots(m)) {
         askConfirm(`Save opening as “${bs}”?`,
@@ -2289,7 +2291,7 @@ $('btn-save').onclick = () => {
       return;
     }
     if (meta.saved && !baselineDirty(m.id) && !meta.error
-        && (meta.savedStatus || 'Operated') === 'Operated') { renderChecklist(); show('view-checklist'); return; }
+        && (meta.savedStatus || 'Operated') === 'Operated') { backToChecklist(); return; }
     saveBaseline(m.id);
     return;
   }
@@ -2470,7 +2472,7 @@ function abPage(n) {
   $('ab-step2').classList.toggle('hidden', n !== 2);
   window.scrollTo(0, 0);
 }
-$('btn-addbrand-back').onclick = () => { renderChecklist(); show('view-checklist'); };
+$('btn-addbrand-back').onclick = () => { backToChecklist(); };
 $('ab-back1').onclick = () => abPage(1);
 
 /* Kitchen sort: K1…K99 in numeric order, CR last. */
@@ -2710,7 +2712,7 @@ function renderBilling(d) {
   };
 }
 $('menu-billing').onclick = () => { $('menu-overlay').classList.add('hidden'); openBilling(); };
-$('btn-billing-back').onclick = () => { renderChecklist(); show('view-checklist'); };
+$('btn-billing-back').onclick = () => { backToChecklist(); };
 
 /* ---------- catering save (own endpoint: log tab + scoped merge) ---------- */
 async function saveCatering(mid) {
@@ -2744,16 +2746,7 @@ async function saveCatering(mid) {
   else if (v.photoLink) payload.photoLink = v.photoLink;
 
   try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 90000);
-    let d;
-    try {
-      const r = await api('/api/records/catering', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload), signal: ctrl.signal });
-      d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
-    } finally { clearTimeout(t); }
+    const d = await postRecord(payload, '/api/records/catering');
     rec.inFlight = false;
     rec.saved = true;
     rec.serverSaved = true;
@@ -2787,7 +2780,7 @@ function openDinein() {
   renderDinein();
   show('view-dinein');
 }
-$('btn-dinein-back').onclick = () => { renderChecklist(); show('view-checklist'); };
+$('btn-dinein-back').onclick = () => { backToChecklist(); };
 
 function renderDinein() {
   if (di.busy) {
