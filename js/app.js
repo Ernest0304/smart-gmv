@@ -12,6 +12,47 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
    ships with no roster or merchant data. */
 let DATA = null;
 
+/* ---------- staff session (PIN sessionization, Ernest 3 Aug) ----------
+   Login hands back a signed token; every write and data read carries it, so
+   the server refuses requests that never passed a PIN. Kept in sessionStorage:
+   survives a tab reload (the mid-round eviction case) but not a device handover.
+   401 anywhere -> drop the token and send the user back to the PIN screen. */
+const SESSION_KEY = 'smartgmv.session';
+function setSession(tok, staffId) {
+  try {
+    if (tok) sessionStorage.setItem(SESSION_KEY, JSON.stringify({ tok, staffId }));
+    else sessionStorage.removeItem(SESSION_KEY);
+  } catch (e) { /* private mode: session lives in memory only */ }
+  state.token = tok || '';
+}
+function loadSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+async function api(path, opts) {
+  const o = { ...(opts || {}) };
+  o.headers = { ...(o.headers || {}) };
+  if (state.token) o.headers.Authorization = `Bearer ${state.token}`;
+  const r = await fetch(`${CONFIG.apiBase}${path}`, o);
+  if (r.status === 401) {
+    setSession('');
+    if (state.staff) {
+      toast('Session expired — enter your PIN again');
+      loginStep('pin');
+      show('view-login');
+    }
+    throw new Error('session expired');
+  }
+  return r;
+}
+/* Photo proxy is an <img src>, so it cannot send a header — the token rides
+   as a query param there (same signature check server-side). */
+function photoUrl(id) {
+  return `${CONFIG.apiBase}/api/photo/${id}?t=${encodeURIComponent(state.token || '')}`;
+}
+
 async function loadCatalog() {
   $('site-grid').innerHTML = '<p class="ab-note"><span class="spinner sm"></span> Loading sites…</p>';
   try {
@@ -83,6 +124,7 @@ function lastUsedLabel(iso) {
 }
 
 const state = {
+  token: (loadSession() || {}).tok || '',   // survives a tab reload mid-round
   site: null, staff: null, pin: '',
   pinMode: 'verify',                // verify | create | confirm (first-login PIN claim)
   pinFirst: '',                     // first entry while confirming a new PIN
@@ -497,6 +539,7 @@ async function submitRegistration(allowDuplicate) {
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
     // PIN was chosen in the form and is already on the server — straight in.
     DATA.staff.push(d.staff);
+    setSession(d.token || '', d.staff && d.staff.id);
     state.staff = d.staff;
     toast(`Welcome, ${d.staff.name} — you're on the list now`);
     enterApp();
@@ -595,6 +638,7 @@ async function claimPin() {
       return;
     }
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    setSession(d.token || '', d.staff && d.staff.id);
     state.staff = { ...d.staff, needsPin: false };
     const src = DATA.staff.find((p) => p.id === d.staff.id);
     if (src) src.needsPin = false;
@@ -703,7 +747,7 @@ async function hydrateToday() {
 }
 async function hydrateTodayInner() {
   try {
-    const r = await fetch(`${CONFIG.apiBase}/api/records/today?site=${state.site.id}&date=${state.salesDate}`);
+    const r = await api(`/api/records/today?site=${state.site.id}&date=${state.salesDate}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const { records } = await r.json();
     records.forEach((sr) => {
@@ -844,6 +888,7 @@ function renderChecklist() {
 }
 $('btn-logout').onclick = () => attemptLogout();
 function logout() {
+  setSession('');
   state.staff = null;   // else beforeunload guards a session the user discarded
   state.pin = '';
   state.pinFirst = '';
@@ -889,7 +934,7 @@ $('pc-submit').onclick = async () => {
   $('pc-submit').disabled = true;
   $('pc-submit').textContent = 'Changing…';
   try {
-    const r = await fetch(`${CONFIG.apiBase}/api/staff/pin/change`, {
+    const r = await api('/api/staff/pin/change', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ staffId: state.staff.id, oldPin: $('pc-old').value,
         newPin: $('pc-new').value }) });
@@ -934,7 +979,7 @@ function renderBrands() {
      Disabled): optimistic flip, revert loudly if the server says no. */
   const patchFlag = async (m, body, revert) => {
     try {
-      const r = await fetch(`${CONFIG.apiBase}/api/merchants`, {
+      const r = await api('/api/merchants', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, ...body }),
       });
@@ -958,7 +1003,7 @@ function renderBrands() {
     m[key] = src2[key] = next;
     renderBrands();
     try {
-      const r = await fetch(`${CONFIG.apiBase}/api/merchants`, { method: 'PATCH',
+      const r = await api('/api/merchants', { method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, [ch]: next }) });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
@@ -1009,7 +1054,7 @@ async function loadHistory(force) {
   rv.error = null;
   renderReview();
   try {
-    const r = await fetch(`${CONFIG.apiBase}/api/records?site=${state.site.id}`
+    const r = await api(`/api/records?site=${state.site.id}`
       + `&from=${dateForOffset(6)}&to=${dateForOffset(1)}`);
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
@@ -1277,7 +1322,7 @@ function extrasHTML(ch, val, rec) {
   const collapsed = list.length > 3 && !rec.expandedExtras?.[ch];
   const rowHTML = (e, i) => {
     const thumb = e.thumbUrl || e.photoUrl
-      || (e.photoId ? `${CONFIG.apiBase}/api/photo/${esc(e.photoId)}` : null);
+      || (e.photoId ? photoUrl(esc(e.photoId)) : null);
     const stateIcon = e.pendingAI ? '<span class="spinner sm"></span>'
       : e.dup ? ic('alert') : e.conf === 'high' && !e.edited ? '✓' : e.edited ? '✎' : ic('alert');
     return `<div class="extra-row ${e.edited ? 'edited' : ''} ${e.dup ? 'dup' : ''}">
@@ -1343,7 +1388,7 @@ function channelBodyHTML(ch, val, base, mode) {
         </div>
         <div class="photo-btns"><button class="retake">Retake</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
     : val.photoLink && val.photoId
-    ? `<div class="photo-row"><img class="thumb tap" src="${CONFIG.apiBase}/api/photo/${esc(val.photoId)}" alt="evidence" title="Tap to view or mark the correct number">
+    ? `<div class="photo-row"><img class="thumb tap" src="${photoUrl(esc(val.photoId))}" alt="evidence" title="Tap to view or mark the correct number">
         <div class="ai-note-col">
           <span class="screen-note">${ic('archive')} Photo on record — saved to Drive earlier.</span>
           <span class="tap-hint">${ic('hand')} Tap to view or mark the correct number</span>
@@ -1554,7 +1599,7 @@ function runExtraction(ch, photoUrl) {
   const isBaseline = ctx.mode === 'baseline';
   const sdate = isBaseline ? state.salesDate : dateForOffset(ctx.offset || 0);
   const kindBase = ch === 'grab' ? 'Grab Photo' : 'Foodpanda Photo';
-  fetch(`${CONFIG.apiBase}/api/extract`, {
+  api('/api/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image: photoUrl, channel: ch,
@@ -1597,7 +1642,7 @@ function runExtraExtraction(ctx, ch, entry) {
     if (viewingCtx(ctx)) { renderChannelCards(); updateSaveBtn(); }
   };
 
-  fetch(`${CONFIG.apiBase}/api/extract`, {
+  api('/api/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image: entry.photoUrl, channel: ch, mode: 'closing',
@@ -1624,7 +1669,7 @@ function runExtraExtraction(ctx, ch, entry) {
 function openViewer(ch) {
   const val = channelValue(ch);
   const src = val && (val.photoUrl
-    || (val.photoId ? `${CONFIG.apiBase}/api/photo/${val.photoId}` : null));
+    || (val.photoId ? photoUrl(val.photoId) : null));
   if (!src) return;
   state.viewer = { ch, pendingBox: null };
   const img = $('viewer-img');
@@ -1956,7 +2001,7 @@ async function postRecord(payload) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 90000);
   try {
-    const r = await fetch(`${CONFIG.apiBase}/api/records`, {
+    const r = await api('/api/records', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload), signal: ctrl.signal });
     const d = await r.json().catch(() => ({}));
@@ -2280,7 +2325,7 @@ $('ab-create').onclick = async () => {
   /* Appends a real SFDC ID Map row: B–E values, F–H formulas copied from the
      row above, I = the outside-hours checkbox. Same row the sheet-side flow uses. */
   try {
-    const r = await fetch(`${CONFIG.apiBase}/api/merchants`, {
+    const r = await api('/api/merchants', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ facility: state.site.id, kitchen: ab.customer.kitchen,
         brand, sfdcId: ab.customer.oppId, overnight }),
@@ -2416,7 +2461,7 @@ async function loadBilling() {
   try {
     const qs = bl.custom ? `from=${bl.from || $('bl-from').value}&to=${bl.to || $('bl-to').value}`
                          : `month=${bl.month}`;
-    const r = await fetch(`${CONFIG.apiBase}/api/billing?site=${state.site.id}&${qs}`);
+    const r = await api(`/api/billing?site=${state.site.id}&${qs}`);
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
     renderBilling(d);
