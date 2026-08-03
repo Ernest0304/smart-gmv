@@ -423,11 +423,11 @@ function renderStaffResume() {
     .map((e) => ({ e, p: DATA.staff.find((x) => x.id === e.id) }))
     .filter((r) => r.p);
   if (!live.length || state.staffQuery) { wrap.innerHTML = ''; return; }
+  // Same shape as the roster rows below: the site is already chosen and named in
+  // the header, so repeating it here would be noise (Ernest 3 Aug).
   wrap.innerHTML = `<label class="field-label">Continue as</label>`
-    + live.map(({ e, p }) => `<button class="staff-btn resume" data-sr="${esc(e.id)}">
-        <span class="avatar">${esc(p.name[0])}</span>
-        <span class="resume-txt"><b>${esc(p.name)}</b>
-          <small>at ${esc(state.site.name)} · ${esc(state.site.id)}</small></span>
+    + live.map(({ e, p }) => `<button class="staff-btn" data-sr="${esc(e.id)}">
+        <span class="avatar">${esc(p.name[0])}</span>${esc(p.name)}
       </button>`).join('')
     + '<div class="resume-sep"></div>';
   wrap.querySelectorAll('[data-sr]').forEach((b) => b.onclick = () => {
@@ -2401,10 +2401,12 @@ function renderCateringPicker(q) {
     .sort((a, b) => kitchenOrder(a.kitchen) - kitchenOrder(b.kitchen)
       || a.brand.localeCompare(b.brand));
   const partners = DATA.merchants.filter((m) => m.site === CATERING_SITE && hit(m));
-  const card = (m, label) => `<button class="staff-btn" data-cat-site="${esc(m.site)}"
+  // The avatar already carries the kitchen and the group heading the facility —
+  // a subtitle would just repeat them (Ernest 3 Aug).
+  const card = (m) => `<button class="staff-btn" data-cat-site="${esc(m.site)}"
       data-cat-kitchen="${esc(m.kitchen)}" data-cat-brand="${esc(m.brand)}" ${m.catering ? 'data-on="1"' : ''}>
       <span class="avatar kav">${esc(m.kitchen)}</span>
-      <span class="cname">${esc(m.brand)}<div class="customer-meta">${esc(label)}</div></span>
+      <span class="cname">${esc(m.brand)}</span>
       ${m.catering ? '<span class="tag on" style="margin-left:auto">IN CATERING</span>' : ''}
     </button>`;
   // The partner option exists ONLY in the Catering entry: elsewhere every brand
@@ -2421,7 +2423,7 @@ function renderCateringPicker(q) {
   const groups = facilityOrder.map((sid) => {
     const site = DATA.sites.find((s) => s.id === sid);
     return `<div class="roster-group">${esc(site ? site.name : sid)} · ${esc(sid)}</div>`
-      + byFacility.get(sid).map((m) => card(m, m.kitchen === 'CR' ? 'Cloud Retail' : 'Kitchen')).join('');
+      + byFacility.get(sid).map(card).join('');
   }).join('');
   $('ab-customers').innerHTML =
     `<button class="staff-btn" id="ab-thirdparty">
@@ -2429,7 +2431,7 @@ function renderCateringPicker(q) {
        <span class="cname">Third-party partner<div class="customer-meta">Outside company, no SFDC ID — catering only</div></span>
      </button>`
     + (partners.length ? `<div class="roster-group">Partners</div>`
-        + partners.map((m) => card(m, 'Third party')).join('') : '')
+        + partners.map(card).join('') : '')
     + (rows.length ? groups : `<p class="ab-note">No brand matches “${esc(q)}”.</p>`);
 
   $('ab-thirdparty').onclick = () => {
