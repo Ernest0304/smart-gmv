@@ -412,6 +412,29 @@ function renderSites() {
     loginStep('staff');
   });
 }
+/* Same "recent on this device" shortcut, but on the staff step: the site is
+   already picked, so tapping a name goes straight to their PIN for THIS site —
+   no scrolling a long roster when someone helps out at another facility
+   (Ernest 3 Aug). */
+function renderStaffResume() {
+  const wrap = $('staff-resume');
+  if (!wrap || !DATA) return;
+  const live = readRecent()
+    .map((e) => ({ e, p: DATA.staff.find((x) => x.id === e.id) }))
+    .filter((r) => r.p);
+  if (!live.length || state.staffQuery) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = `<label class="field-label">Continue as</label>`
+    + live.map(({ e, p }) => `<button class="staff-btn resume" data-sr="${esc(e.id)}">
+        <span class="avatar">${esc(p.name[0])}</span>
+        <span class="resume-txt"><b>${esc(p.name)}</b>
+          <small>at ${esc(state.site.name)} · ${esc(state.site.id)}</small></span>
+      </button>`).join('')
+    + '<div class="resume-sep"></div>';
+  wrap.querySelectorAll('[data-sr]').forEach((b) => b.onclick = () => {
+    const p = DATA.staff.find((x) => x.id === b.dataset.sr);
+    if (p) proceedToPin(p);                   // site stays as chosen
+  });
+}
 function renderStaff() {
   /* Home Site is a priority list (Ernest 29 Jul): first = main site, the rest
      = 2nd/3rd/… priority. Roster order at a site: its own team, then people
@@ -424,13 +447,17 @@ function renderStaff() {
   };
   const q = (state.staffQuery || '').trim().toLowerCase();
   const hit = (p) => !q || p.name.toLowerCase().includes(q);
-  const main = DATA.staff.filter((p) => prio(p) === 0 && hit(p));
+  // Facility priority decides the group; inside a group, A→Z so a name is
+  // findable by eye without reading every row (Ernest 3 Aug).
+  const az = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  const main = DATA.staff.filter((p) => prio(p) === 0 && hit(p)).sort(az);
   const cover = DATA.staff.filter((p) => prio(p) > 0 && prio(p) !== Infinity && hit(p))
-    .sort((a, b) => prio(a) - prio(b));
-  const others = DATA.staff.filter((p) => prio(p) === Infinity && hit(p));
+    .sort((a, b) => prio(a) - prio(b) || az(a, b));
+  const others = DATA.staff.filter((p) => prio(p) === Infinity && hit(p)).sort(az);
   const none = q && !main.length && !cover.length && !others.length;
   const btn = (p) => `<button class="staff-btn" data-id="${esc(p.id)}"><span class="avatar">${esc(p.name[0])}</span>${esc(p.name)}
       ${p.partTimer ? '<span class="tag pt" style="margin-left:auto">PART-TIMER</span>' : (p.home && p.home !== sid ? `<span class="tag pt" style="margin-left:auto">${esc(p.home)}</span>` : '')}</button>`;
+  renderStaffResume();
   $('staff-list').innerHTML =
     (none ? `<p class="ab-note">No name matches “${esc(state.staffQuery.trim())}” — new here? Register below.</p>` : '') +
     (main.length ? `<div class="roster-group">${esc(state.site.name)} team</div>` + main.map(btn).join('') : '') +
@@ -2371,8 +2398,7 @@ function renderCateringPicker(q) {
     || m.kitchen.toLowerCase().includes(needle) || String(m.site).toLowerCase().includes(needle);
   const rows = DATA.merchants
     .filter((m) => m.site !== CATERING_SITE && !m.disabled && hit(m))
-    .sort((a, b) => String(a.site).localeCompare(b.site, undefined, { numeric: true })
-      || kitchenOrder(a.kitchen) - kitchenOrder(b.kitchen)
+    .sort((a, b) => kitchenOrder(a.kitchen) - kitchenOrder(b.kitchen)
       || a.brand.localeCompare(b.brand));
   const partners = DATA.merchants.filter((m) => m.site === CATERING_SITE && hit(m));
   const card = (m, label) => `<button class="staff-btn" data-cat-site="${esc(m.site)}"
@@ -2383,6 +2409,20 @@ function renderCateringPicker(q) {
     </button>`;
   // The partner option exists ONLY in the Catering entry: elsewhere every brand
   // must map to a contracted kitchen (Ernest 3 Aug).
+  // Grouped by facility, kitchens in K1→Kxx order then CR (Ernest 3 Aug): a flat
+  // 67-row list is a scroll; the heading tells you where you are at a glance.
+  const byFacility = new Map();
+  rows.forEach((m) => {
+    if (!byFacility.has(m.site)) byFacility.set(m.site, []);
+    byFacility.get(m.site).push(m);
+  });
+  const facilityOrder = [...byFacility.keys()].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true }));
+  const groups = facilityOrder.map((sid) => {
+    const site = DATA.sites.find((s) => s.id === sid);
+    return `<div class="roster-group">${esc(site ? site.name : sid)} · ${esc(sid)}</div>`
+      + byFacility.get(sid).map((m) => card(m, m.kitchen === 'CR' ? 'Cloud Retail' : 'Kitchen')).join('');
+  }).join('');
   $('ab-customers').innerHTML =
     `<button class="staff-btn" id="ab-thirdparty">
        <span class="avatar kav">${ic('plus')}</span>
@@ -2390,9 +2430,7 @@ function renderCateringPicker(q) {
      </button>`
     + (partners.length ? `<div class="roster-group">Partners</div>`
         + partners.map((m) => card(m, 'Third party')).join('') : '')
-    + (rows.length ? `<div class="roster-group">Our kitchens · all facilities</div>`
-        + rows.map((m) => card(m, `${m.site} · ${m.siteName || ''}`)).join('')
-      : `<p class="ab-note">No brand matches “${esc(q)}”.</p>`);
+    + (rows.length ? groups : `<p class="ab-note">No brand matches “${esc(q)}”.</p>`);
 
   $('ab-thirdparty').onclick = () => {
     ab.thirdParty = true;
