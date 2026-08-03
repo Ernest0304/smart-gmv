@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#B01E2E">
 <title>Smart GMV</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260803j">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260803j">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260803l">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260803l">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -15,14 +15,14 @@
 <!-- ?v= pairs the HTML with matching assets — bump it on EVERY deploy, or a
      browser holding a cached copy mixes old JS with new HTML and dies silently
      (Ernest's Chrome, 30 Jul). -->
-<link rel="stylesheet" href="css/app.css?v=20260803j">
+<link rel="stylesheet" href="css/app.css?v=20260803l">
 </head>
 <body>
 
 <!-- ============ LOGIN VIEW ============ -->
 <div class="view" id="view-login">
   <div class="login-hero">
-    <div class="login-logo"><img src="icons/icon-192.png?v=20260803j" alt="" style="width:100%;height:100%;border-radius:inherit;display:block"></div>
+    <div class="login-logo"><img src="icons/icon-192.png?v=20260803l" alt="" style="width:100%;height:100%;border-radius:inherit;display:block"></div>
     <h1>Smart GMV</h1>
     <p class="login-sub">Daily sales capture · Smart City Kitchens</p>
   </div>
@@ -96,6 +96,12 @@
       <p id="prog-sub">Tap a merchant to capture its sales</p>
     </div>
   </div>
+
+  <button class="dinein-entry hidden" id="dinein-entry">
+    <svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>
+    <span><b>Monthly dine-in</b><small>One sheet covers every brand for the month</small></span>
+    <svg class="ic rv-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6l6 6-6 6"/></svg>
+  </button>
 
   <div class="section-label hidden" id="sec-morning-label"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.5 4.5l2 2M17.5 17.5l2 2M19.5 4.5l-2 2M6.5 17.5l-2 2"/></svg> Opening GMV <span class="sec-hint">24-hr merchants · shoot at 10 am</span></div>
   <div class="merchant-list" id="list-morning"></div>
@@ -199,6 +205,19 @@
     </div>
     <div id="bl-body" style="margin-top:14px"></div>
   </div>
+</div>
+
+<!-- ============ MONTHLY DINE-IN (S12) ============ -->
+<div class="view hidden" id="view-dinein">
+  <header class="app-header">
+    <button class="icon-btn" id="btn-dinein-back" aria-label="Back"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg></button>
+    <div class="header-center">
+      <div class="header-site">Monthly dine-in</div>
+      <div class="header-meta" id="di-sub"></div>
+    </div>
+    <span class="header-spacer"></span>
+  </header>
+  <div class="capture-body" id="di-body"></div>
 </div>
 
 <!-- ============ ADD BRAND VIEW ============ -->
@@ -314,7 +333,7 @@
 
 <!-- Catalog, roster and customers load live from /api/catalog at boot —
      no merchant or staff data ships with this public repo. -->
-<script src="js/config.js?v=20260803j"></script>
-<script src="js/app.js?v=20260803j"></script>
+<script src="js/config.js?v=20260803l"></script>
+<script src="js/app.js?v=20260803l"></script>
 </body>
 </html>

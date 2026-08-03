@@ -843,6 +843,13 @@ function renderChecklist() {
     : doneCount === all.length ? 'All done — great round! 🎉'
     : `${all.length - doneCount} merchants left · tap to capture`;
 
+  // S12's dine-in arrives once a month as one sheet — its own entry, above the round
+  const diWrap = $('dinein-entry');
+  if (diWrap) {
+    const show12 = state.site.id === 'S12';
+    diWrap.classList.toggle('hidden', !show12);
+    if (show12) diWrap.onclick = openDinein;
+  }
   $('sec-morning-label').classList.toggle('hidden', overnight.length === 0);
   $('list-morning').innerHTML = overnight.map((m) => {
     const bm = state.baselineMeta[m.id] || {};
@@ -2726,4 +2733,140 @@ async function saveCatering(mid) {
     toast(`❗ ${m.brand} catering NOT saved — ${rec.saveError}. Tap the red card to retry.`);
   }
   renderChecklist();
+}
+
+/* ---------- S12 monthly dine-in: one screenshot for the whole site ----------
+   Ernest 3 Aug: the food-hall accounting sheet arrives once a month. Read it,
+   confirm row by row, then merge each brand's figures into its 1st-of-month row
+   without touching that row's delivery numbers. */
+const di = { photo: null, read: null, rows: [], busy: false };
+
+function openDinein() {
+  di.photo = null; di.read = null; di.rows = []; di.busy = false;
+  $('di-sub').textContent = `${state.site.name} · ${state.site.id}`;
+  renderDinein();
+  show('view-dinein');
+}
+$('btn-dinein-back').onclick = () => { renderChecklist(); show('view-checklist'); };
+
+function renderDinein() {
+  if (di.busy) {
+    $('di-body').innerHTML = `<p class="ab-note"><span class="spinner sm"></span> Reading the screenshot — one moment.</p>`;
+    return;
+  }
+  if (!di.read) {
+    $('di-body').innerHTML = `
+      <p class="ab-note">Upload the monthly dine-in sheet for ${esc(state.site.name)}. The month in the
+        heading decides the date — “July '26” is recorded as 1 July 2026, and every brand's figures go
+        into that day's row. Nothing else on those rows is touched.</p>
+      <div class="photo-slot" id="di-pick"><span class="cam">${ic('camera')}</span> Upload the monthly dine-in screenshot</div>`;
+    $('di-pick').onclick = () => dineinInput.click();
+    return;
+  }
+  const r = di.read;
+  const cc = r.crossCheck || {};
+  const money2 = (v) => (v === null || v === undefined || v === '' ? '—' : money(Number(v)));
+  const num = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
+  const rows = di.rows.map((x, i) => `
+    <div class="di-row">
+      <div class="di-head"><b>${esc(x.matchedBrand)}</b><span class="bl-mini">${esc(x.kitchen)}</span></div>
+      <div class="di-grid">
+        <label>Dine-in orders<input inputmode="numeric" data-di="${i}" data-f="dineinOrders" value="${x.dineinOrders ?? ''}" placeholder="—"></label>
+        <label>Dine-in sales<input inputmode="decimal" data-di="${i}" data-f="dineinGmv" value="${x.dineinGmv ?? ''}" placeholder="—"></label>
+        <label>Promo orders<input inputmode="numeric" data-di="${i}" data-f="promoOrders" value="${x.promoOrders ?? ''}" placeholder="—"></label>
+        <label>Promo sales<input inputmode="decimal" data-di="${i}" data-f="promoGmv" value="${x.promoGmv ?? ''}" placeholder="—"></label>
+      </div>
+      ${x.totalOrders !== null && x.totalOrders !== undefined
+        ? `<div class="bl-mini">sheet shows ${num(x.totalOrders)} total orders for the month</div>` : ''}
+    </div>`).join('');
+  $('di-body').innerHTML = `
+    <div class="progress-card" style="display:block">
+      <span class="bl-cap">${esc(r.monthLabel)} → recorded as ${esc(r.salesDate)}</span>
+      <div class="bl-big">${di.rows.length} brand${di.rows.length === 1 ? '' : 's'}</div>
+      <div class="bl-mini">Dine-in ${money2(cc.ourSum && cc.ourSum.dineinGmv)} · promo ${money2(cc.ourSum && cc.ourSum.promoGmv)} · ${num(cc.ourSum && cc.ourSum.totalOrders)} orders</div>
+    </div>
+    ${cc.matches
+      ? `<p class="ab-note">${ic('check')} Our row-by-row total matches the TOTAL line on the sheet.</p>`
+      : `<div class="bl-flag">${ic('alert')} Our total does not match the sheet's TOTAL line
+          (sheet ${money2(cc.sheetTotal && cc.sheetTotal.dinein_gmv)} / ${num(cc.sheetTotal && cc.sheetTotal.total_orders)} orders).
+          Check the rows below${(r.unmatched || []).length ? ' — some brands did not match the ID Map' : ''}.</div>`}
+    ${(r.unmatched || []).length ? `<div class="bl-flag">${ic('alert')} Not in the ID Map, so not saved:
+        ${r.unmatched.map((u) => esc(u.brand)).join(', ')}. Add the brand first, then upload again.</div>` : ''}
+    ${r.notes ? `<p class="ab-note">${ic('alert')} ${esc(r.notes)}</p>` : ''}
+    ${rows}
+    <div class="save-bar" style="position:static;padding:16px 0 24px;background:none">
+      <button class="btn-primary" id="di-save">Save ${di.rows.length} brand${di.rows.length === 1 ? '' : 's'} for ${esc(r.salesDate)}</button>
+      <button class="chip" id="di-redo" style="margin-top:10px">Upload a different screenshot</button>
+    </div>`;
+  $('di-body').querySelectorAll('[data-di]').forEach((inp) => inp.oninput = () => {
+    const row = di.rows[Number(inp.dataset.di)];
+    const raw = inp.value.trim();
+    const isMoney = inp.dataset.f.endsWith('Gmv');
+    row[inp.dataset.f] = raw === '' ? null : (isMoney ? Number(raw) : parseInt(raw, 10));
+    inp.classList.toggle('bad', raw !== '' && !Number.isFinite(Number(raw)));
+  });
+  $('di-redo').onclick = () => { di.read = null; di.rows = []; renderDinein(); };
+  $('di-save').onclick = saveDinein;
+}
+
+const dineinInput = makeInput({});
+dineinInput.onchange = () => {
+  const file = dineinInput.files && dineinInput.files[0];
+  dineinInput.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => readDinein(reader.result);
+  reader.readAsDataURL(file);
+};
+async function readDinein(dataUrl) {
+  di.busy = true; renderDinein();
+  try {
+    // a dense table: keep it big enough for the AI to read every column
+    di.photo = await downscale(dataUrl, 1800, 0.9);
+    const r = await api('/api/dinein/read', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: di.photo, site: state.site.id }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    di.read = d;
+    di.rows = d.rows.map((x) => ({ ...x }));
+    toast(`${d.monthLabel} read — ${d.rows.length} brands matched`);
+  } catch (e) {
+    di.read = null;
+    toast(`❗ Could not read the screenshot — ${e.message}`);
+  } finally {
+    di.busy = false;
+    renderDinein();
+  }
+}
+
+async function saveDinein() {
+  if (!di.read || !di.rows.length) return;
+  const btn = $('di-save');
+  btn.disabled = true;
+  btn.textContent = '⬆ Saving…';
+  try {
+    const r = await api('/api/dinein/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        site: state.site.id, siteName: state.site.name,
+        salesDate: di.read.salesDate, monthLabel: di.read.monthLabel,
+        confirmedAt: nowStamp(), staffName: state.staff.name, staffId: state.staff.id || '',
+        photo: di.photo,
+        rows: di.rows.map((x) => ({ kitchen: x.kitchen, brand: x.matchedBrand, sfdcId: x.sfdcId,
+          dineinOrders: x.dineinOrders ?? null, dineinGmv: x.dineinGmv ?? null,
+          promoOrders: x.promoOrders ?? null, promoGmv: x.promoGmv ?? null })),
+      }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    const n = (d.written || []).length + (d.created || []).length;
+    toast(`${n} brand${n === 1 ? '' : 's'} saved for ${d.salesDate} ✓`
+      + ((d.skipped || []).length ? ` · ${d.skipped.length} skipped` : ''));
+    renderChecklist();
+    show('view-checklist');
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Retry save';
+    toast(`❗ Monthly dine-in NOT saved — ${e.message}`);
+  }
 }

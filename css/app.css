@@ -502,3 +502,21 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
   display: inline-flex; align-items: center; gap: 4px; }
 .mb-card .mb-ch.on, .mb-card .mb-moon.on { border-color: var(--red); color: var(--red); background: #FDF2F3; }
 .mb-card .mb-moon .ic { width: 13px; height: 13px; }
+
+/* monthly dine-in: entry card + confirm table */
+.dinein-entry { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
+  background: var(--card); border: 0.5px solid #E5E2DB; border-radius: 14px;
+  padding: 14px; margin: 4px 0 10px; }
+.dinein-entry span { flex: 1; min-width: 0; }
+.dinein-entry b { display: block; font-size: 15px; }
+.dinein-entry small { color: var(--ink-2); font-size: 12px; }
+.dinein-entry .ic { width: 20px; height: 20px; color: var(--ink-2); flex: none; }
+.di-row { background: var(--card); border: 0.5px solid #E5E2DB; border-radius: 14px;
+  padding: 12px 14px; margin-bottom: 10px; }
+.di-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.di-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.di-grid label { font-size: 11px; color: var(--ink-2); display: block; }
+.di-grid input { width: 100%; box-sizing: border-box; margin-top: 3px; padding: 9px 10px;
+  border: 1px solid #DDD9D2; border-radius: 9px; font-size: 16px;
+  font-variant-numeric: tabular-nums; background: #fff; }
+.di-grid input.bad { border-color: var(--red); background: #FDF2F3; }
