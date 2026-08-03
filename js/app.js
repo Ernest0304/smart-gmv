@@ -678,9 +678,18 @@ async function verifyPin() {
     }
     if (r.status === 403) { pinFail('Wrong PIN — try again'); return; }
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    // Store the session BEFORE entering the app: enterApp() immediately reads
+    // today's records, and without the token that read is refused (this line
+    // was missing on 3 Aug — a fresh PIN login landed on "session expired").
+    if (!d.token) throw new Error('no session returned');
+    setSession(d.token, d.staff && d.staff.id);
     state.staff = d.staff;
     enterApp();
   } catch (e) {
+    if (e.message === 'no session returned') {
+      pinFail('The app was just updated — enter your PIN once more');
+      return;
+    }
     pinFail(`Could not verify (${e.message}) — try again`);
   } finally {
     setPinBusy(false);
