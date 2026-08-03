@@ -539,7 +539,8 @@ async function submitRegistration(allowDuplicate) {
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
     // PIN was chosen in the form and is already on the server — straight in.
     DATA.staff.push(d.staff);
-    setSession(d.token || '', d.staff && d.staff.id);
+    if (!d.token) throw new Error('The app was just updated — log in once more');
+    setSession(d.token, d.staff && d.staff.id);
     state.staff = d.staff;
     toast(`Welcome, ${d.staff.name} — you're on the list now`);
     enterApp();
@@ -638,7 +639,8 @@ async function claimPin() {
       return;
     }
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
-    setSession(d.token || '', d.staff && d.staff.id);
+    if (!d.token) throw new Error('The app was just updated — log in once more');
+    setSession(d.token, d.staff && d.staff.id);
     state.staff = { ...d.staff, needsPin: false };
     const src = DATA.staff.find((p) => p.id === d.staff.id);
     if (src) src.needsPin = false;
