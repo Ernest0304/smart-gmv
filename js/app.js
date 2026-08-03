@@ -2337,13 +2337,86 @@ $('guard-logout').onclick = () => { $('guard-overlay').classList.add('hidden'); 
 const ab = { customer: null };
 function openAddBrand() {
   ab.customer = null;
+  ab.thirdParty = false;
   $('ab-search').value = '';
   $('ab-brand').value = '';
   $('ab-overnight').checked = false;
   abPage(1);
-  $('ab-sub').textContent = `${state.site.name} · creates a new SFDC ID Map record`;
-  renderCustomers('');
+  if (state.site.id === CATERING_SITE) {
+    $('ab-sub').textContent = 'Catering · add an existing brand, or a third-party partner';
+    $('ab-search').placeholder = 'Search brand or kitchen…';
+    renderCateringPicker('');
+  } else {
+    $('ab-sub').textContent = `${state.site.name} · creates a new SFDC ID Map record`;
+    $('ab-search').placeholder = 'Search company name…';
+    renderCustomers('');
+  }
   show('view-addbrand');
+}
+
+/* Catering roster building (Ernest 3 Aug): our own tenants are ALREADY in the
+   ID Map — adding them to catering is a tick, not a new row (any facility, so
+   the list spans all sites). Third-party partners have no SFDC ID at all and do
+   get their own row under the CATERING pseudo-facility. */
+function renderCateringPicker(q) {
+  const needle = q.trim().toLowerCase();
+  const hit = (m) => !needle || m.brand.toLowerCase().includes(needle)
+    || m.kitchen.toLowerCase().includes(needle) || String(m.site).toLowerCase().includes(needle);
+  const rows = DATA.merchants
+    .filter((m) => m.site !== CATERING_SITE && !m.disabled && hit(m))
+    .sort((a, b) => String(a.site).localeCompare(b.site, undefined, { numeric: true })
+      || kitchenOrder(a.kitchen) - kitchenOrder(b.kitchen)
+      || a.brand.localeCompare(b.brand));
+  const partners = DATA.merchants.filter((m) => m.site === CATERING_SITE && hit(m));
+  const card = (m, label) => `<button class="staff-btn" data-cat-site="${esc(m.site)}"
+      data-cat-kitchen="${esc(m.kitchen)}" data-cat-brand="${esc(m.brand)}" ${m.catering ? 'data-on="1"' : ''}>
+      <span class="avatar kav">${esc(m.kitchen)}</span>
+      <span class="cname">${esc(m.brand)}<div class="customer-meta">${esc(label)}</div></span>
+      ${m.catering ? '<span class="tag on" style="margin-left:auto">IN CATERING</span>' : ''}
+    </button>`;
+  // The partner option exists ONLY in the Catering entry: elsewhere every brand
+  // must map to a contracted kitchen (Ernest 3 Aug).
+  $('ab-customers').innerHTML =
+    `<button class="staff-btn" id="ab-thirdparty">
+       <span class="avatar kav">${ic('plus')}</span>
+       <span class="cname">Third-party partner<div class="customer-meta">Outside company, no SFDC ID — catering only</div></span>
+     </button>`
+    + (partners.length ? `<div class="roster-group">Partners</div>`
+        + partners.map((m) => card(m, 'Third party')).join('') : '')
+    + (rows.length ? `<div class="roster-group">Our kitchens · all facilities</div>`
+        + rows.map((m) => card(m, `${m.site} · ${m.siteName || ''}`)).join('')
+      : `<p class="ab-note">No brand matches “${esc(q)}”.</p>`);
+
+  $('ab-thirdparty').onclick = () => {
+    ab.thirdParty = true;
+    ab.customer = null;
+    $('ab-picked').innerHTML = `<span class="avatar kav">${ic('plus')}</span>
+      <span><div class="cname">Third-party catering partner</div>
+      <div class="customer-meta">No SFDC ID — logged in the catering tab only, never billed as a licensee</div></span>`;
+    $('ab-brand').value = '';
+    abPage(2);
+    updateCreateBtn();
+  };
+  $('ab-customers').querySelectorAll('[data-cat-brand]').forEach((b) => b.onclick = async () => {
+    const m = DATA.merchants.find((x) => x.site === b.dataset.catSite
+      && x.kitchen === b.dataset.catKitchen && x.brand === b.dataset.catBrand);
+    if (!m) return;
+    const next = !m.catering;
+    b.disabled = true;
+    try {
+      const r = await api('/api/merchants', { method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, catering: next }) });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      m.catering = next;
+      state.merchants = siteMerchants(state.site.id);
+      renderCateringPicker($('ab-search').value);
+      toast(next ? `${m.brand} added to catering ✓` : `${m.brand} removed from catering`);
+    } catch (e) {
+      b.disabled = false;
+      toast(`❗ Could not update ${m.brand} — ${e.message}`);
+    }
+  });
 }
 function abPage(n) {
   $('ab-step1').classList.toggle('hidden', n !== 1);
@@ -2379,10 +2452,14 @@ function renderCustomers(q) {
     updateCreateBtn();
   });
 }
-$('ab-search').oninput = () => renderCustomers($('ab-search').value);
+$('ab-search').oninput = () => (state.site.id === CATERING_SITE
+  ? renderCateringPicker($('ab-search').value)
+  : renderCustomers($('ab-search').value));
 $('ab-brand').oninput = updateCreateBtn;
 function updateCreateBtn() {
-  $('ab-create').disabled = !(ab.customer && $('ab-brand').value.trim().length >= 2);
+  const named = $('ab-brand').value.trim().length >= 2;
+  $('ab-create').disabled = !((ab.customer || ab.thirdParty) && named);
+  $('ab-create').textContent = ab.thirdParty ? 'Add catering partner' : 'Create brand record';
 }
 $('ab-create').onclick = async () => {
   const brand = $('ab-brand').value.trim();
@@ -2395,8 +2472,11 @@ $('ab-create').onclick = async () => {
   try {
     const r = await api('/api/merchants', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ facility: state.site.id, kitchen: ab.customer.kitchen,
-        brand, sfdcId: ab.customer.oppId, overnight }),
+      body: ab.thirdParty
+        ? JSON.stringify({ facility: CATERING_SITE, kitchen: '3P', brand, sfdcId: '',
+                           overnight: false, catering: true })
+        : JSON.stringify({ facility: state.site.id, kitchen: ab.customer.kitchen,
+                           brand, sfdcId: ab.customer.oppId, overnight }),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
