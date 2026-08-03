@@ -483,3 +483,20 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
 .reupload { background: none; border: none; color: var(--blue); font-weight: 700;
   font-size: 12.5px; cursor: pointer; }
 .reupload:active { filter: brightness(.9); }
+
+/* Manage brands: name gets its own line (never truncated), controls below */
+.mb-card { background: var(--card); border: 0.5px solid #E5E2DB; border-radius: 14px;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.mb-card.off { background: #F6F5F2; }
+.mb-card.off .mb-name { color: var(--ink-2); }
+.mb-top { display: flex; align-items: center; gap: 10px; }
+.mb-name { font-size: 15px; font-weight: 600; flex: 1; min-width: 0;
+  white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.mb-ctl { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.mb-switches { display: flex; gap: 6px; flex-wrap: wrap; }
+.mb-card .mb-ch, .mb-card .mb-moon { min-width: 0; min-height: 38px; padding: 8px 11px;
+  border: 1.5px solid #D8D5CF; border-radius: 10px; background: var(--card);
+  color: var(--ink-2); font-size: 12.5px; font-weight: 500; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 4px; }
+.mb-card .mb-ch.on, .mb-card .mb-moon.on { border-color: var(--red); color: var(--red); background: #FDF2F3; }
+.mb-card .mb-moon .ic { width: 13px; height: 13px; }

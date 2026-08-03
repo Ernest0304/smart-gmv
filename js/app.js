@@ -67,6 +67,8 @@ async function loadCatalog() {
         site: m.facility, kitchen: m.kitchen, brand: m.brand, sfdcId: m.sfdcId,
         overnight: m.overnight || undefined, disabled: m.disabled || undefined,
         grabOn: m.grabOn !== false, fpOn: m.fpOn !== false,
+        catering: !!m.catering,          // shows this brand in the Catering entry
+        siteName: m.site,                // long facility name, for catering records
         aigens: m.aigens || undefined,
         type: m.kitchen === 'CR' ? 'Cloud Retail' : 'Kitchen',
       })),
@@ -193,7 +195,7 @@ function dayLabel(offset) {
 /* ---------- merchant helpers ---------- */
 function siteMerchants(siteId) {
   return DATA.merchants
-    .filter((m) => m.site === siteId)
+    .filter((m) => (siteId === CATERING_SITE ? m.catering : m.site === siteId))
     .map((m, i) => ({
       ...m,
       id: `${m.site}-${m.kitchen}-${i}`,
@@ -201,7 +203,9 @@ function siteMerchants(siteId) {
     }))
     .sort((a, b) => (a.kitchen === 'CR') - (b.kitchen === 'CR') || a.kitchen.localeCompare(b.kitchen, undefined, { numeric: true }));
 }
+const CATERING_SITE = 'CATERING';   // pseudo-facility: catering has its own entry
 function channelsFor(m, siteId) {
+  if (siteId === CATERING_SITE) return ['catering'];   // one line, nothing else
   const ch = ['grab', 'fp', 'others', 'catering'];
   if (siteId === 'S12') ch.push('dinein', 'promodinein');
   return ch;
@@ -397,7 +401,9 @@ function renderResume() {
 function renderSites() {
   renderResume();
   $('site-grid').innerHTML = DATA.sites.map((s) => {
-    const n = DATA.merchants.filter((m) => m.site === s.id).length;
+    const n = s.id === CATERING_SITE
+      ? DATA.merchants.filter((m) => m.catering && !m.disabled).length
+      : DATA.merchants.filter((m) => m.site === s.id).length;
     return `<button class="site-btn" data-site="${esc(s.id)}">${esc(s.name)}<small>${esc(s.id)} · ${n} merchants</small></button>`;
   }).join('');
   $('site-grid').querySelectorAll('.site-btn').forEach((b) => b.onclick = () => {
@@ -974,14 +980,19 @@ $('btn-brands-back').onclick = () => { renderChecklist(); show('view-checklist')
 function renderBrands() {
   const list = state.merchants;   // full roster incl. disabled, kitchen order
   $('mb-list').innerHTML = list.length ? list.map((m) => `
-    <div class="merchant-card mb ${m.disabled ? 'off' : ''}">
-      <div class="m-kitchen">${esc(m.kitchen)}</div>
-      <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
-        <div class="m-tags">${m.disabled ? '<span class="tag off">DISABLED</span>' : '<span class="tag on">ACTIVE</span>'}${m.overnight ? '<span class="tag h24">24 HR</span>' : ''}</div></div>
-      <div class="mb-btns">
-        <button class="mb-ch ${m.grabOn !== false ? 'on' : ''}" data-ch="grab" data-id="${esc(m.id)}" title="GrabFood channel on/off">G</button>
-        <button class="mb-ch ${m.fpOn !== false ? 'on' : ''}" data-ch="fp" data-id="${esc(m.id)}" title="foodpanda channel on/off">F</button>
-        <button class="mb-moon ${m.overnight ? 'on' : ''}" data-id="${esc(m.id)}" title="Operates outside 10 am – 10 pm — needs a daily opening GMV shot">${ic('moon')}</button>
+    <div class="mb-card ${m.disabled ? 'off' : ''}">
+      <div class="mb-top">
+        <div class="m-kitchen">${esc(m.kitchen)}</div>
+        <div class="mb-name">${esc(m.brand)}</div>
+        ${m.disabled ? '<span class="tag off">DISABLED</span>' : ''}
+      </div>
+      <div class="mb-ctl">
+        <div class="mb-switches">
+          <button class="mb-ch ${m.grabOn !== false ? 'on' : ''}" data-ch="grab" data-id="${esc(m.id)}">Grab</button>
+          <button class="mb-ch ${m.fpOn !== false ? 'on' : ''}" data-ch="fp" data-id="${esc(m.id)}">foodpanda</button>
+          <button class="mb-ch ${m.catering ? 'on' : ''}" data-ch="catering" data-id="${esc(m.id)}">Catering</button>
+          <button class="mb-moon ${m.overnight ? 'on' : ''}" data-id="${esc(m.id)}" title="Operates outside 10 am – 10 pm — needs a daily opening GMV shot">${ic('moon')} 24 h</button>
+        </div>
         <button class="mb-toggle ${m.disabled ? 'enable' : ''}" data-id="${esc(m.id)}">${m.disabled ? 'Enable' : 'Disable'}</button>
       </div>
     </div>`).join('') : `<p class="ab-note">No brands at ${esc(state.site.name)} (${esc(state.site.id)}) yet — this list fills up once the first brand is added via ☰ → Add new brand.</p>`;
@@ -1007,10 +1018,12 @@ function renderBrands() {
     const m = findMerchant(b.dataset.id);
     const src2 = DATA.merchants.find((x) => x.site === m.site && x.kitchen === m.kitchen && x.brand === m.brand);
     const ch = b.dataset.ch;
-    const key = ch === 'grab' ? 'grabOn' : 'fpOn';
-    const next = !(m[key] !== false);
-    const otherOn = ch === 'grab' ? m.fpOn !== false : m.grabOn !== false;
-    if (!next && !otherOn) { toast('A brand needs at least one delivery channel — disable the brand instead'); return; }
+    const key = ch === 'grab' ? 'grabOn' : ch === 'fp' ? 'fpOn' : 'catering';
+    const next = ch === 'catering' ? !m.catering : !(m[key] !== false);
+    if (ch !== 'catering') {
+      const otherOn = ch === 'grab' ? m.fpOn !== false : m.grabOn !== false;
+      if (!next && !otherOn) { toast('A brand needs at least one delivery channel — disable the brand instead'); return; }
+    }
     m[key] = src2[key] = next;
     renderBrands();
     try {
@@ -1018,7 +1031,7 @@ function renderBrands() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, [ch]: next }) });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
-      toast(`${m.brand}: ${ch === 'grab' ? 'GrabFood' : 'foodpanda'} ${next ? 'on' : 'off'} ✓`);
+      toast(`${m.brand}: ${ch === 'grab' ? 'GrabFood' : ch === 'fp' ? 'foodpanda' : 'Catering'} ${next ? 'on' : 'off'} ✓`);
     } catch (e) {
       m[key] = src2[key] = !next;
       renderBrands();
@@ -1194,12 +1207,17 @@ function openCapture(mid, mode, offset = 0, from = 'checklist') {
   const store = recordsFor(offset);
   if (!store[mid]) store[mid] = { status: 'Operated', channels: {}, expanded: {} };
 
+  const cateringMode = state.site.id === CATERING_SITE;
+  if (cateringMode && !store[mid].salesDate) store[mid].salesDate = state.salesDate;
   $('cap-merchant').textContent = m.brand;
-  $('cap-sub').textContent = `${state.site.id} · ${m.kitchen} · ${m.type}`
+  $('cap-sub').textContent = (cateringMode
+      ? `Catering · ${m.site === CATERING_SITE ? 'third party' : m.site + ' ' + m.kitchen}`
+      : `${state.site.id} · ${m.kitchen} · ${m.type}`)
     + (mode === 'baseline' ? ' · ☀️ opening GMV' : '')
     + (offset ? ` · ✏️ editing ${dayLabel(offset)}` : '');
 
   renderStatusChips();
+  renderCateringDate(cateringMode);
   renderBaselineBanner();
   renderChannelCards();
   updateSaveBtn();
@@ -1212,6 +1230,23 @@ $('btn-capture-back').onclick = () => {
 
 function baseStatus(mid) { return state.baselineMeta[mid]?.status || 'Operated'; }
 
+/* Catering is logged for a staff-chosen sales date — it may be recorded days
+   later, or at month end (Ernest 3 Aug), so the date is an explicit field. */
+function renderCateringDate(on) {
+  const el = $('catering-date-row');
+  if (!on) { el.classList.add('hidden'); return; }
+  const rec = curRec();
+  el.classList.remove('hidden');
+  $('cat-date').value = rec.salesDate || state.salesDate;
+  $('cat-date').max = state.salesDate;
+  $('cat-date').onchange = () => {
+    const v = $('cat-date').value;
+    if (!v) return;
+    rec.salesDate = v;
+    delete rec.recordId;          // the id embeds the date
+    updateSaveBtn();
+  };
+}
 function renderStatusChips() {
   const { m, mode } = state.current;
   $('status-row').classList.remove('hidden');
@@ -2204,6 +2239,7 @@ $('btn-save').onclick = () => {
     return;
   }
   const rec = curRec();
+  if (state.site.id === CATERING_SITE) { saveCatering(m.id); return; }
   if (offset) {
     if (!coreReady()) return;
     const doAmend = () => saveAmend(m.id, offset, from);
@@ -2527,3 +2563,66 @@ function renderBilling(d) {
 }
 $('menu-billing').onclick = () => { $('menu-overlay').classList.add('hidden'); openBilling(); };
 $('btn-billing-back').onclick = () => { renderChecklist(); show('view-checklist'); };
+
+/* ---------- catering save (own endpoint: log tab + scoped merge) ---------- */
+async function saveCatering(mid) {
+  const m = findMerchant(mid);
+  const rec = state.records[mid];
+  if (!rec || rec.inFlight) return;
+  const v = rec.channels.catering || {};
+  const orders = Number(v.finalOrders);
+  const gmv = Number(v.finalGmv);
+  if (!Number.isFinite(orders) || !Number.isFinite(gmv)) { toast('Enter the catering orders and sales first'); return; }
+  if (!v.photoUrl && !v.photoLink) { toast('A catering record needs photo evidence'); return; }
+  const date = rec.salesDate || state.salesDate;
+  if (!rec.recordId) rec.recordId = recordIdFor(m, 'closing', date);
+  if (!rec.confirmedAt) rec.confirmedAt = nowStamp();
+  rec.staffName = rec.staffName || state.staff.name;
+  rec.inFlight = true;
+  rec.saveError = null;
+  renderChecklist();
+  show('view-checklist');
+
+  const payload = {
+    recordId: rec.recordId, salesDate: date, confirmedAt: rec.confirmedAt,
+    staffName: state.staff.name, staffId: state.staff.id || '',
+    site: m.site, siteName: m.siteName || '', kitchen: m.kitchen,
+    brand: m.brand, sfdcId: m.sfdcId || '',
+    orders, gmv,
+    aiOrders: v.aiOrders ?? null, aiGmv: v.aiGmv ?? null,
+    notes: '',
+  };
+  if (v.photoDirty && v.photoUrl) payload.photo = v.photoUrl;
+  else if (v.photoLink) payload.photoLink = v.photoLink;
+
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 90000);
+    let d;
+    try {
+      const r = await api('/api/records/catering', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload), signal: ctrl.signal });
+      d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    } finally { clearTimeout(t); }
+    rec.inFlight = false;
+    rec.saved = true;
+    rec.serverSaved = true;
+    rec.saveError = null;
+    if (d.photoLink) {
+      v.photoLink = d.photoLink;
+      v.photoId = photoIdOf(d.photoLink);
+      v.photoDirty = false;
+      v.photoUrl = undefined;
+    }
+    toast(d.thirdParty
+      ? `${m.brand} catering saved ✓ — logged for ${date} (partner, no licensee row)`
+      : `${m.brand} catering saved ✓ — ${date} row updated, other channels untouched`);
+  } catch (e) {
+    rec.inFlight = false;
+    rec.saveError = e.name === 'AbortError' ? 'timed out after 90s' : e.message;
+    toast(`❗ ${m.brand} catering NOT saved — ${rec.saveError}. Tap the red card to retry.`);
+  }
+  renderChecklist();
+}
