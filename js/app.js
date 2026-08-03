@@ -763,6 +763,8 @@ async function hydrateToday() {
   }
 }
 async function hydrateTodayInner() {
+  // the catering entry is not a daily per-site round — nothing to rehydrate
+  if (state.site && state.site.id === CATERING_SITE) return;
   try {
     const r = await api(`/api/records/today?site=${state.site.id}&date=${state.salesDate}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1249,6 +1251,12 @@ function renderCateringDate(on) {
 }
 function renderStatusChips() {
   const { m, mode } = state.current;
+  // Catering asks no kitchen-status question: it is one logged figure for a
+  // chosen sales date, not a statement about how the kitchen traded that day.
+  if (state.site && state.site.id === CATERING_SITE) {
+    $('status-row').classList.add('hidden');
+    return;
+  }
   $('status-row').classList.remove('hidden');
   const isBase = mode === 'baseline';
   const meta = isBase ? (state.baselineMeta[m.id] = state.baselineMeta[m.id] || {}) : null;
@@ -1324,7 +1332,9 @@ function renderChannelCards() {
   wrap.innerHTML = chans.map((ch) => {
     const meta = CH_META[ch];
     const val = channelValue(ch) || {};
-    const optional = OPTIONAL.includes(ch) && mode !== 'baseline';
+    // In the catering entry the catering card IS the form — never collapsed.
+    const optional = OPTIONAL.includes(ch) && mode !== 'baseline'
+      && !(state.site && state.site.id === CATERING_SITE && ch === 'catering');
     const collapsed = optional && !rec.expanded[ch] && !channelHasData(val);
     if (collapsed) {
       return `<button class="channel-collapsed" data-expand="${ch}">
@@ -1945,6 +1955,17 @@ function updateSaveBtn() {
   }
   const rec = curRec();
   if (rec.inFlight) { btn.disabled = true; btn.textContent = '⬆ Saving…'; return; }
+  if (state.site && state.site.id === CATERING_SITE) {
+    const v = rec.channels.catering || {};
+    const ready = Number.isFinite(Number(v.finalOrders)) && Number.isFinite(Number(v.finalGmv))
+      && (v.photoUrl || v.photoLink);
+    btn.disabled = !ready;
+    btn.textContent = rec.saveError ? '❗ Retry catering save'
+      : !Number.isFinite(Number(v.finalGmv)) ? 'Enter the catering figures'
+      : !(v.photoUrl || v.photoLink) ? 'Attach the catering evidence'
+      : rec.serverSaved ? 'Save changes' : `Save catering for ${rec.salesDate || state.salesDate}`;
+    return;
+  }
   // Hold tonight's save while this merchant's opening GMV is mid-save: letting
   // it through would briefly write a false NO_BASELINE flag (review 29 Jul).
   if (!offset && m.overnight && state.baselineMeta[m.id]?.inFlight) {
