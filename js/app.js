@@ -1014,7 +1014,8 @@ function renderBrands() {
       <div class="mb-top">
         <div class="m-kitchen">${esc(m.kitchen)}</div>
         <div class="mb-name">${esc(m.brand)}</div>
-        ${m.disabled ? '<span class="tag off">DISABLED</span>' : ''}
+        <button class="mb-state ${m.disabled ? 'off' : 'on'}" data-id="${esc(m.id)}"
+          title="${m.disabled ? 'Disabled — tap to bring it back into capture' : 'Active — tap to hide it from new capture'}">${m.disabled ? 'Disabled' : 'Active'}</button>
       </div>
       <div class="mb-ctl">
         <div class="mb-switches">
@@ -1023,7 +1024,6 @@ function renderBrands() {
           <button class="mb-ch ${m.catering ? 'on' : ''}" data-ch="catering" data-id="${esc(m.id)}">Catering</button>
           <button class="mb-moon ${m.overnight ? 'on' : ''}" data-id="${esc(m.id)}" title="Operates outside 10 am – 10 pm — needs a daily opening GMV shot">${ic('moon')} 24 h</button>
         </div>
-        <button class="mb-toggle ${m.disabled ? 'enable' : ''}" data-id="${esc(m.id)}">${m.disabled ? 'Enable' : 'Disable'}</button>
       </div>
     </div>`).join('') : `<p class="ab-note">No brands at ${esc(state.site.name)} (${esc(state.site.id)}) yet — this list fills up once the first brand is added via ☰ → Add new brand.</p>`;
 
@@ -1078,7 +1078,7 @@ function renderBrands() {
                : `${m.brand} back to normal hours`);
     patchFlag(m, { overnight: next }, () => { m.overnight = src.overnight = !next || undefined; });
   });
-  $('mb-list').querySelectorAll('.mb-toggle').forEach((b) => b.onclick = () => {
+  $('mb-list').querySelectorAll('.mb-state').forEach((b) => b.onclick = () => {
     const m = findMerchant(b.dataset.id);
     const src = DATA.merchants.find((x) => x.site === m.site && x.kitchen === m.kitchen && x.brand === m.brand);
     const next = !m.disabled;

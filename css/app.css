@@ -282,11 +282,6 @@ body {
 /* Manage brands */
 .tag.on { background: var(--green-bg); color: var(--green); }
 .tag.off { background: #EDEDED; color: var(--ink-2); }
-.mb-toggle {
-  flex: none; padding: 9px 16px; border-radius: 99px; border: 1.5px solid var(--red);
-  background: #fff; color: var(--red); font-size: 13px; font-weight: 800; cursor: pointer;
-}
-.mb-toggle.enable { border-color: var(--green); color: var(--green); }
 .mb-moon {
   flex: none; width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--line);
   background: #fff; font-size: 17px; cursor: pointer; filter: grayscale(1); opacity: .55;
@@ -374,7 +369,7 @@ body {
 .viewer-close { width: 44px; height: 44px; }
 .back-link { padding: 10px 0; }
 .chip { padding: 12px 16px; }
-.mb-toggle, .mb-moon { min-width: 42px; min-height: 42px; }
+.mb-moon { min-width: 42px; min-height: 42px; }
 .x-del { padding: 12px 10px; margin: -8px -2px -8px 2px; }
 .photo-btns { gap: 10px; }
 .retake, .ch-remove { padding: 10px 14px; background: var(--paper); border-radius: 10px; font-size: 13px; }
@@ -384,7 +379,7 @@ body {
 .btn-primary:active:not(:disabled), .vc-btn:active, .extras-add:active,
 .retake:active, .x-del:active { transform: scale(.97); filter: brightness(.9); }
 .chip:active, .menu-item:active, .icon-btn:active, .menu-cancel:active,
-.mb-toggle:active, .mb-moon:active, .back-link:active { filter: brightness(.92); }
+.mb-moon:active, .back-link:active { filter: brightness(.92); }
 
 /* the two cells that become invoices must show where the caret is */
 .rf:focus-within { box-shadow: 0 0 0 2px rgba(176,30,46,.16); border-radius: 10px; }
@@ -507,3 +502,10 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
   border: 1px solid #DDD9D2; border-radius: 9px; font-size: 16px;
   font-variant-numeric: tabular-nums; background: #fff; }
 .di-grid input.bad { border-color: var(--red); background: #FDF2F3; }
+/* Manage brands: the state lives on the name row as a pill that SAYS the state
+   (a 'Disable' verb button made you infer the current state from the action). */
+.mb-state { flex: none; padding: 6px 12px; border-radius: 999px; font-size: 12px;
+  font-weight: 600; letter-spacing: .3px; border: 1.5px solid transparent; background: none; }
+.mb-state.on { color: #0F6E56; border-color: #9FE1CB; background: #E9F7F1; }
+.mb-state.off { color: var(--red); border-color: #F0C4C8; background: #FDF2F3; }
+.mb-state:active { filter: brightness(.94); }
