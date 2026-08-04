@@ -767,6 +767,7 @@ function serverRecToLocal(sr) {
       finalOrders: numOrU(c.summaryOrders), finalGmv: numOrU(c.summaryGmv),
       photoLink: c.photoLink || undefined,
       photoId: c.photoId || photoIdOf(c.photoLink),
+      noSales: !!c.noSales,
       extras: (c.extras || []).map((e) => ({ gmv: e.gmv, aiGmv: e.aiGmv ?? undefined,
         conf: e.conf ?? undefined, orderRef: e.orderRef || '', photoLink: e.photo,
         photoId: e.photoId || photoIdOf(e.photo) })),
@@ -1451,6 +1452,13 @@ function totalStripHTML(ch, val) {
 }
 
 function channelBodyHTML(ch, val, base, mode) {
+  if (val.noSales) {
+    /* Declared zero day: the platform is on but took no orders — 0/0 saved,
+       photo waived. Distinct from a photographed empty screen. */
+    return `<div class="deduct-box">${ic('check')} <b>No sales today</b> — saved as 0 orders · $0.00, no photo needed.
+        If orders show up later, undo this and record the reading.</div>
+      <div class="extras-add-row"><button class="extras-add ns-undo">Undo — record sales instead</button></div>`;
+  }
   const o = val.finalOrders ?? val.orders;
   const g = val.finalGmv ?? val.gmv;
   const fields = `<div class="reading-fields full">
@@ -1488,7 +1496,10 @@ function channelBodyHTML(ch, val, base, mode) {
        </div>
        <div class="no-photo-note">${aiChannel
          ? 'You can type the numbers first — but a photo is required as evidence before saving.'
-         : 'This channel is manual — type the numbers. A photo is optional here.'}</div>`;
+         : 'This channel is manual — type the numbers. A photo is optional here.'}</div>`
+       + (aiChannel && mode === 'evening' && CORE.includes(ch) && !state.current.m.overnight
+         ? `<div class="extras-add-row"><button class="extras-add ns-btn">${ic('dot')} No sales on ${CH_META[ch].name} today</button></div>`
+         : '');
   let extra = '';
   if (mode === 'baseline' && channelHasData(val)) {
     extra = `<div class="deduct-box">${ic('sun')} Stored as today's opening GMV — deducted tonight. Not billed.</div>`;
@@ -1558,6 +1569,31 @@ function wireChannel(card, ch) {
         updateSaveBtn();
         toast(`${CH_META[ch].name} cleared`);
       });
+  };
+
+  /* Per-channel no-sales declaration (Ernest 3 Aug): the platform is in use
+     but genuinely took no orders today — 0/0 recorded, photo waived. The gen
+     bump kills any in-flight AI read, same as ✕ Remove. */
+  const nsBtn = card.querySelector('.ns-btn');
+  if (nsBtn) nsBtn.onclick = () => {
+    const m = state.current.m;
+    askConfirm(`No sales on ${CH_META[ch].name} today?`,
+      `${m.brand} will be saved with 0 orders · $0.00 on ${CH_META[ch].name} — no photo needed. `
+      + 'If orders show up later, open the card again and undo it.',
+      'Yes — no sales today', () => {
+        const prev = channelValue(ch) || {};
+        setChannelValue(ch, { noSales: true, finalOrders: 0, finalGmv: 0, gen: (prev.gen || 0) + 1 });
+        renderChannelCards();
+        updateSaveBtn();
+        toast(`${CH_META[ch].name} — no sales recorded`);
+      });
+  };
+  const nsUndo = card.querySelector('.ns-undo');
+  if (nsUndo) nsUndo.onclick = () => {
+    const prev = channelValue(ch) || {};
+    setChannelValue(ch, { gen: (prev.gen || 0) + 1 });
+    renderChannelCards();
+    updateSaveBtn();
   };
 
   /* Pending-pickup extras wiring */
@@ -1935,12 +1971,15 @@ function coreReady() {
 }
 function missingPhotos() {
   const rec = curRec();
-  return coreFor(state.current.m).filter((ch) => rec.channels[ch] && !rec.channels[ch].photoUrl && !rec.channels[ch].photoLink);
+  return coreFor(state.current.m).filter((ch) => rec.channels[ch] && !rec.channels[ch].photoUrl
+    && !rec.channels[ch].photoLink && !rec.channels[ch].noSales);
 }
 function photosCaptured() {
-  /* All CORE screens photographed (reads may still be in flight). */
+  /* All CORE screens photographed (reads may still be in flight); a declared
+     no-sales channel needs no shot, so it counts as covered. */
   const rec = curRec();
-  return rec.status === 'Operated' && coreFor(state.current.m).every((ch) => rec.channels[ch]?.photoUrl || rec.channels[ch]?.photoLink);
+  return rec.status === 'Operated' && coreFor(state.current.m).every((ch) => rec.channels[ch]?.noSales
+    || rec.channels[ch]?.photoUrl || rec.channels[ch]?.photoLink);
 }
 function baselineShots(mid) {
   return coreFor(findMerchant(mid)).map((ch) => state.baselines[`${mid}:${ch}`]).filter(Boolean);
@@ -2041,7 +2080,7 @@ function buildPayload(m, rec, salesDate) {
         finalOrders: v.finalOrders ?? null, finalGmv: v.finalGmv ?? null,
         edited: !!(v.editedOrders || v.editedGmv || (v.marks || []).length),
         conf: v.conf ?? null, screen: (v.screen || '').slice(0, 400),
-        zero: !!v.zero, marks: v.marks || [],
+        zero: !!v.zero, noSales: !!v.noSales, marks: v.marks || [],
       };
       if (v.photoDirty && v.photoUrl) c.photo = v.photoUrl;
       else if (v.photoLink) c.photoLink = v.photoLink;
