@@ -40,7 +40,7 @@
     --steel-2:   #CFCBC3;
     --ink-hi:    #17181A;
     --ink-mid:   #4E535C;
-    --ink-lo:    #82888F;
+    --ink-lo:    #5F656D;   /* WCAG AA on the paper ground (was #82888F, 3.58:1) */
     --accent:    #B01E2E;
     --ok:        #0E7C3F;
     --ok-soft:   #E8F5EE;
@@ -90,6 +90,8 @@
        font-weight: 750; text-wrap: balance; }
   h3 { font-size: 1.05rem; line-height: 1.3; letter-spacing: -.008em; font-weight: 700; }
   .lede { font-size: clamp(1.05rem, 1.9vw, 1.26rem); color: var(--ink-mid); max-width: var(--measure); }
+  .status-note { font-size: .89rem; color: var(--ink-lo); max-width: 58ch; line-height: 1.6;
+                 border-left: 2px solid var(--steel-2); padding-left: 14px; }
   .body-col { max-width: var(--measure); display: flex; flex-direction: column; gap: 16px; }
   .eyebrow { font-family: var(--mono); font-size: .705rem; letter-spacing: .17em;
              text-transform: uppercase; color: var(--ink-lo); font-weight: 600; }
@@ -115,7 +117,7 @@
      makes it read as a device sitting on the page, not a panel of the page. */
   .phone {
     --p-paper:#F4F3F0; --p-card:#FFF; --p-line:#E7E5E0; --p-ink:#17181A;
-    --p-ink2:#5A5E66; --p-ink3:#9BA0A8; --p-red:#B01E2E; --p-green:#0E7C3F;
+    --p-ink2:#5A5E66; --p-ink3:#6B717A; --p-red:#B01E2E; --p-green:#0E7C3F;
     --p-amber:#B26A00; --p-amber-bg:#FFF4E0; --p-blue:#1C5D99; --p-blue-bg:#E9F1F8;
     background: var(--p-card); color: var(--p-ink);
     border-radius: 30px; padding: 12px; border: 1px solid var(--steel-2);
@@ -163,7 +165,7 @@
   .p-fields { display: grid; grid-template-columns: 1fr 1.35fr; gap: 8px; }
   .p-f { border: 1px solid var(--p-line); border-radius: 10px; padding: 7px 9px; background: var(--p-card); }
   .p-f.edited { border-color: var(--p-amber); background: var(--p-amber-bg); }
-  .p-f label { display: block; font-family: var(--mono); font-size: .585rem; letter-spacing: .1em;
+  .p-f label { display: block; font-family: var(--mono); font-size: .7rem; letter-spacing: .08em;
                text-transform: uppercase; color: var(--p-ink3); font-weight: 700; }
   .p-f .val { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums;
               letter-spacing: -.02em; line-height: 1.2; }
@@ -186,7 +188,7 @@
   .p-save { margin-top: auto; padding: 12px; border-top: 1px solid var(--p-line); background: var(--p-card); }
   .p-save button { width: 100%; border: 0; border-radius: 12px; padding: 13px; font: inherit;
                    font-size: .85rem; font-weight: 800; color: #fff; background: var(--p-red); cursor: pointer; }
-  .p-save button:disabled { background: #E7E5E0; color: #9BA0A8; cursor: not-allowed; }
+  .p-save button:disabled { background: #E7E5E0; color: #63696F; cursor: not-allowed; }
   .phone-wrap { position: relative; }
   .p-toast { position: absolute; left: 24px; right: 24px; bottom: 92px; background: #17181A; color: #fff;
              border-radius: 11px; padding: 10px 13px; font-size: .73rem; font-weight: 600;
@@ -196,7 +198,7 @@
           border-right-color: transparent; border-radius: 50%; animation: sp .7s linear infinite;
           vertical-align: -1px; margin-right: 5px; }
   @keyframes sp { to { transform: rotate(360deg); } }
-  .demo-cap { font-family: var(--mono); font-size: .65rem; color: var(--ink-lo); text-align: center;
+  .demo-cap { font-family: var(--mono); font-size: .72rem; color: var(--ink-lo); text-align: center;
               margin-top: 12px; letter-spacing: .04em; line-height: 1.7; }
 
   .ledger { border: 1px solid var(--steel); border-radius: 14px; background: var(--ground-2);
@@ -205,7 +207,7 @@
                justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; }
   .ledger-scroll { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: .735rem; }
-  th { text-align: left; font-weight: 600; font-size: .62rem; letter-spacing: .1em; text-transform: uppercase;
+  th { text-align: left; font-weight: 600; font-size: .7rem; letter-spacing: .08em; text-transform: uppercase;
        color: var(--ink-lo); padding: 10px 14px; border-bottom: 1px solid var(--steel); white-space: nowrap; }
   th.r { text-align: right; }
   td { padding: 11px 14px; border-bottom: 1px solid var(--steel); color: var(--ink-mid); white-space: nowrap; }
@@ -219,7 +221,7 @@
   .chip.warn { background: var(--warn-soft); color: var(--warn); }
   .chip.info { background: var(--info-soft); color: var(--info); }
   .ledger-foot { padding: 12px 16px; border-top: 1px solid var(--steel); font-family: var(--mono);
-                 font-size: .675rem; color: var(--ink-lo); line-height: 1.75; }
+                 font-size: .74rem; color: var(--ink-lo); line-height: 1.75; }
 
   .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px,1fr)); gap: 18px; }
   .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px,1fr)); gap: 18px; }
@@ -272,10 +274,11 @@
       <div class="hero-copy">
         <div class="kicker">
           <span class="dot"></span>
-          <span class="eyebrow">In production · Singapore · shared kitchens</span>
+          <span class="eyebrow">Live pilot · Singapore · shared kitchens</span>
         </div>
         <h1>Every night, someone reads 25 tablet screens and types the numbers in. That is where the billing errors come from.</h1>
         <p class="lede">Smart GMV replaces the typing. Staff photograph each delivery-platform summary screen, a vision model reads the figures, the person confirms them, and the row lands in the billing sheet with the photo attached as evidence.</p>
+        <p class="status-note">It has been running nightly with real staff since late July, alongside the form it is meant to replace. The decision to switch over completely has not been taken yet — which is the honest place for a system that bills customers to be.</p>
         <div class="hero-meta">
           <div class="meta-item"><span class="v">99.3%</span><span class="k">AI reads kept as-is</span></div>
           <div class="meta-item"><span class="v">~2.2s</span><span class="k">per screen</span></div>
@@ -285,9 +288,9 @@
 
       <div class="phone-wrap">
         <div class="phone">
-          <div class="phone-screen" id="screen"></div>
+          <div class="phone-screen" id="screen" role="region" aria-label="Smart GMV capture demo"></div>
         </div>
-        <div class="p-toast" id="toast"></div>
+        <div class="p-toast" id="toast" role="status" aria-live="polite"></div>
         <p class="demo-cap">Working demo — tap through it.<br>Kitchens and figures are invented.</p>
       </div>
     </div>
@@ -300,7 +303,7 @@
     </div>
     <div class="body-col">
       <p>A shared kitchen facility rents cooking space to food brands. The operator bills each brand a processing fee on the sales they made through delivery platforms between 10am and 10pm — so somebody has to know, per brand per day, what those sales actually were.</p>
-      <p>The platforms show that on a tablet in each kitchen. So at 9pm a staff member walks the corridor with a phone, reads two summary screens per kitchen, and types four numbers into a form. Twenty-five kitchens, fifty screens, two hundred numbers, every night, at the end of a shift.</p>
+      <p>The platforms show that on a tablet in each kitchen. So at 9pm a staff member walks the corridor with a phone, reads two summary screens per kitchen, and types four numbers into a form. Twenty-five kitchens, fifty screens, a hundred numbers, every night, at the end of a shift.</p>
       <p class="pull">A digit typed wrong at 9:40pm is an invoice wrong at month end, and nobody finds it until the customer does.</p>
       <p>Photographing the screen instead of trusting a memory of it changes what the record <em>is</em>. The number stops being a claim and becomes a claim with its evidence attached.</p>
     </div>
@@ -389,7 +392,7 @@
       <div class="card">
         <span class="tag">Found in the pilot</span>
         <h3>A negative result is a contradiction, not a credit</h3>
-        <p>An audit turned up a brand billed <em>minus</em> $276. The cause was visible in the stored photos: the morning shot was actually the previous evening's screen. Now a negative figure is never written — the cell is left blank and flagged for a human.</p>
+        <p>An audit turned up a brand billed a negative amount for the day. The cause was visible in the stored photos: the morning shot was actually the previous evening's screen, so the evening reading came in below it. Now a negative figure is never written — the cell is left blank and flagged for a human.</p>
       </div>
     </div>
   </section>
@@ -400,8 +403,8 @@
       <h2>Five models, three hundred photos, one spreadsheet of results</h2>
     </div>
     <div class="body-col" style="margin-bottom:26px">
-      <p>Picking a vision model on impressions would have been guesswork with money attached. Instead: 300 real screen photos, scored against what staff had recorded that night and against agreement between the models.</p>
-      <p>One candidate was rejected outright — not for being the least accurate, but for being <strong>confidently</strong> wrong, reporting a $2,487 screen as $482 and rating itself high confidence. In a billing pipeline, a wrong number that flags itself is survivable. A wrong number that looks certain is not.</p>
+      <p>Picking a vision model on impressions would have been guesswork with money attached. Instead the candidates were scored against real screen photos — 300 of them in the final round — measured both against what staff had recorded that night and against where the models agreed with each other.</p>
+      <p>An earlier round had already disqualified one candidate, and not merely for being the least accurate. It was <strong>confidently</strong> wrong: it read a screen showing roughly $1,700 as a few hundred dollars, and rated itself high confidence. In a billing pipeline a wrong number that flags itself is survivable. A wrong number that looks certain is not.</p>
     </div>
     <div class="grid-3">
       <div class="stat">
@@ -416,8 +419,8 @@
       </div>
       <div class="stat">
         <span class="v">100%</span>
-        <span class="k">Agreement with consensus</span>
-        <span class="d">On the photos where every model agreed with every other, the chosen reader matched them to the cent.</span>
+        <span class="k">Match on consensus photos</span>
+        <span class="d">On the 290 of 300 photos where at least three of the five models read the same figure, the chosen model matched it to the cent. Against what staff typed that night, 85.3%.</span>
       </div>
     </div>
   </section>
@@ -438,7 +441,7 @@
     <div class="foot-grid">
       <div>
         <span class="eyebrow">Smart GMV</span>
-        <p class="foot-note" style="margin-top:8px">A case study of a system running in production. Every kitchen name, brand and figure on this page is invented; no customer, staff or revenue data appears anywhere on it.</p>
+        <p class="foot-note" style="margin-top:8px">A case study of a system in nightly use at a shared-kitchen operator. Every kitchen, brand and figure in the demo is invented, and the two worked examples in the text use stand-in numbers. No licensee, staff or revenue data appears anywhere on this page — the performance figures describe the system, not any customer's business.</p>
       </div>
       <p class="foot-note" style="text-align:right">Ernest Heng<br>Operations Manager · Singapore</p>
     </div>
@@ -501,11 +504,31 @@
     toastEl.textContent = message;
     toastEl.classList.add("on");
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove("on"), 2300);
+    toastTimer = setTimeout(() => {
+      toastEl.classList.remove("on");
+      toastEl.textContent = "";      // so a screen reader is not re-read a stale line
+    }, 2300);
   }
 
   const draftFor = (i) => (draft[i] ||= { grab: { state: "empty" }, fp: { state: "empty" } });
   const ready = (i) => CHANNELS.every((ch) => ["read", "nosales"].includes(draftFor(i)[ch].state));
+
+  function dropAudits(i) {
+    for (let n = audits.length - 1; n >= 0; n--) {
+      if (audits[n].kitchen === i) audits.splice(n, 1);
+    }
+  }
+
+  /* Touching a kitchen that was already committed retracts its row and its audit
+     lines. A ledger that keeps asserting a figure the draft no longer holds is
+     the exact contradiction this system exists to prevent, so the demo must not
+     do it either — and re-saving replaces those lines rather than repeating them. */
+  function invalidate(i) {
+    if (!(i in saved)) return;
+    delete saved[i];
+    dropAudits(i);
+    renderLedger();
+  }
 
   function renderList() {
     const done = Object.keys(saved).length;
@@ -518,7 +541,9 @@
       el("div", { class: "p-ring" }, ring,
         el("div", null,
           el("div", { class: "rt", text: "Tonight's round" }),
-          el("div", { class: "rs", text: (KITCHENS.length - done) + " left · tap to capture" }))),
+          el("div", { class: "rs", text: done === KITCHENS.length
+            ? "Round complete · every kitchen recorded"
+            : (KITCHENS.length - done) + " left · tap to capture" }))),
       KITCHENS.map((m, i) => el("button", { class: "p-kitchen", type: "button", data: { open: String(i) } },
         el("span", { class: "kx", text: m.k }),
         el("span", { class: "kn", text: m.brand }),
@@ -580,7 +605,7 @@
           "No sales on " + meta.name + " today"));
     }
 
-    return el("div", { class: "p-ch" },
+    return el("div", { class: "p-ch", id: "ch-" + ch },
       el("div", { class: "p-ch-hd" },
         el("div", { class: "p-logo " + meta.cls, text: meta.logo }),
         el("div", { class: "n", text: meta.name }),
@@ -592,7 +617,8 @@
     const m = KITCHENS[i];
     const can = ready(i);
     const saveBtn = el("button", { type: "button", data: { save: String(i) },
-      text: can ? "Confirm & save" : "Capture both screens to save" });
+      text: !can ? "Capture both screens to save"
+        : (i in saved) ? "Update the saved record" : "Confirm & save" });
     saveBtn.disabled = !can;
 
     screen.replaceChildren(
@@ -606,47 +632,88 @@
       el("div", { class: "p-save" }, saveBtn));
   }
 
-  const render = () => (view.name === "list" ? renderList() : renderCapture(view.idx));
+  /* Re-rendering replaces the node the visitor was standing on, so focus has to
+     be placed again deliberately — otherwise every tap drops a keyboard user
+     back to the top of the document. */
+  function render(focusSel) {
+    const wasInside = screen.contains(document.activeElement);
+    if (view.name === "list") renderList();
+    else renderCapture(view.idx);
+    if (wasInside) {
+      // The preferred target may not exist in the new state (a card mid-read has
+      // no buttons at all) and the save button is disabled until the kitchen is
+      // ready — a disabled element silently refuses focus, so walk the fallbacks
+      // looking for one that can actually take it.
+      for (const sel of [focusSel, "[data-save]", ".back", "button"]) {
+        if (!sel) continue;
+        const node = [...screen.querySelectorAll(sel)].find((n) => !n.disabled);
+        if (node) { node.focus(); break; }
+      }
+    }
+  }
 
   screen.addEventListener("click", (event) => {
     const target = event.target.closest("[data-open],[data-back],[data-shoot],[data-nosales],[data-undo],[data-edit],[data-save]");
     if (!target) return;
     const d = target.dataset;
 
-    if (d.open !== undefined) { view = { name: "capture", idx: Number(d.open) }; render(); return; }
-    if (d.back) { view = { name: "list", idx: null }; render(); return; }
+    if (d.open !== undefined) {
+      view = { name: "capture", idx: Number(d.open) };
+      render(".back");
+      return;
+    }
+    if (d.back) {
+      const from = view.idx;
+      view = { name: "list", idx: null };
+      render('[data-open="' + from + '"]');
+      return;
+    }
 
     const i = view.idx;
     const rec = draftFor(i);
 
     if (d.shoot) {
       const ch = d.shoot;
+      invalidate(i);
       rec[ch] = { state: "reading" };
-      render();
+      render("#ch-" + ch + " button");
       setTimeout(() => {
         const [orders, gmv] = KITCHENS[i][ch];
         rec[ch] = { state: "read", orders, gmv, aiOrders: orders, aiGmv: gmv, edited: false };
-        if (view.name === "capture" && view.idx === i) render();
-        toast(CH[ch].name + " read — " + orders + " orders · " + money(gmv));
+        if (view.name === "capture" && view.idx === i) render("#ch-" + ch + " button");
+        /* name the kitchen: a figure that floats free of the brand it came from
+           is the thing this whole system exists to stop */
+        toast(KITCHENS[i].brand + " · " + CH[ch].name + " — " + orders + " orders · " + money(gmv));
       }, 1150);
       return;
     }
 
     if (d.nosales) {
-      rec[d.nosales] = { state: "nosales" };
-      render();
-      toast(CH[d.nosales].name + " — no sales recorded");
+      const ch = d.nosales;
+      invalidate(i);
+      rec[ch] = { state: "nosales" };
+      render('[data-undo="' + ch + '"]');
+      toast(KITCHENS[i].brand + " · " + CH[ch].name + " — no sales recorded");
       return;
     }
-    if (d.undo) { rec[d.undo] = { state: "empty" }; render(); return; }
+
+    if (d.undo) {
+      const ch = d.undo;
+      invalidate(i);
+      rec[ch] = { state: "empty" };
+      render('[data-shoot="' + ch + '"]');
+      return;
+    }
 
     if (d.edit) {
       /* the correction the audit trail exists for: a misread digit, caught on the spot */
-      const v = rec[d.edit];
+      const ch = d.edit;
+      invalidate(i);
+      const v = rec[ch];
       v.orders = v.aiOrders + 2;
       v.gmv = Number((v.aiGmv + 46.8).toFixed(2));
       v.edited = true;
-      render();
+      render("[data-save]");
       toast("Correction stored next to the AI reading");
       return;
     }
@@ -664,19 +731,21 @@
     saved[i] = { grab: figure("grab"), fp: figure("fp"),
       edited: CHANNELS.some((ch) => d[ch].edited) };
 
+    // saving again restates this kitchen's history, it never repeats it
+    dropAudits(i);
     CHANNELS.forEach((ch) => {
       if (d[ch].edited) {
-        audits.push(m.k + " " + m.brand + " · " + CH[ch].name + " sales "
-          + money(d[ch].aiGmv) + " → " + money(d[ch].gmv) + " · corrected on device");
+        audits.push({ kitchen: i, text: m.k + " " + m.brand + " · " + CH[ch].name + " sales "
+          + money(d[ch].aiGmv) + " → " + money(d[ch].gmv) + " · corrected on device" });
       }
       if (d[ch].state === "nosales") {
-        audits.push(m.k + " " + m.brand + " · " + CH[ch].name
-          + ": staff declared no sales — screen not photographed");
+        audits.push({ kitchen: i, text: m.k + " " + m.brand + " · " + CH[ch].name
+          + ": staff declared no sales — screen not photographed" });
       }
     });
 
     view = { name: "list", idx: null };
-    render();
+    render('[data-open="' + i + '"]');
     renderLedger();
     toast(m.brand + " saved ✓");
   }
@@ -714,7 +783,7 @@
     }));
 
     rowCount.textContent = rows.length + (rows.length === 1 ? " row" : " rows");
-    auditLog.replaceChildren(...audits.map((line) => el("div", { text: "· " + line })));
+    auditLog.replaceChildren(...audits.map((a) => el("div", { text: "· " + a.text })));
   }
 
   render();
