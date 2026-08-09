@@ -553,8 +553,10 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
   color: var(--kb-muted-d); margin-top: 1px;
 }
 
-/* demo badge doubles as the preview banner: yellow, loud, honest */
-.demo-badge { background: var(--kb-yellow); color: var(--kb-ink); font-weight: 800; }
+/* demo badge doubles as the preview banner: a full-bleed yellow band between
+   the two black panels — no margins, no radius, no white seams */
+.demo-badge { background: var(--kb-yellow); color: var(--kb-ink); font-weight: 800;
+  margin: 0; border-radius: 0; padding: 8px 16px; }
 
 /* ---- the round: rounded cards stay, worked-on row gets the yellow edge ---- */
 .merchant-card { border-left: 3px solid transparent; }

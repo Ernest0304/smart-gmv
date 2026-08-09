@@ -818,6 +818,7 @@ async function hydrateTodayInner() {
       if (!m) return;
       if (sr.recordType === 'baseline') {
         state.baselineMeta[m.id] = { recordId: sr.recordId, saved: true,
+          savedAt: sr.timestamp || '',
           status: sr.status || 'Operated', savedStatus: sr.status || 'Operated' };
         Object.entries(sr.channels).forEach(([ch, c]) => {
           state.baselines[`${m.id}:${ch}`] = {
@@ -902,15 +903,17 @@ function renderChecklist() {
   $('list-morning').innerHTML = overnight.map((m) => {
     const bm = state.baselineMeta[m.id] || {};
     const reading = baselineReading(m);
+    /* Same word-and-time slot as the evening list (9 Aug): short, so the
+       brand name never gets squeezed into an ellipsis. */
     const st = bm.saved ? ['done',
         bm.savedStatus === 'Not operated' ? '✓ Not operated'
-        : bm.savedStatus === 'No Sales' ? '✓ No overnight sales'
-        : '✓ Opening GMV recorded']
+        : bm.savedStatus === 'No Sales' ? '✓ no sales'
+        : `✓ ${hhmm(bm.savedAt) || 'recorded'}`]
       : bm.inFlight ? ['pending', '⬆ saving…']
       : bm.error ? ['flagred', ic('bang') + ' not saved — tap to retry']
-      : reading ? ['pending', ic('loader') + ' AI reading…']
-      : baselineHasShots(m) ? ['flag', ic('dot') + ' confirm opening GMV']
-      : ['flag', ic('alert') + ' Opening GMV missing'];
+      : reading ? ['pending', ic('loader') + ' reading…']
+      : baselineHasShots(m) ? ['flag', ic('dot') + ' confirm']
+      : ['flag', '○ shoot opening'];
     return `<div class="merchant-card ${bm.error ? 'failed' : ''}" data-id="${esc(m.id)}" data-mode="baseline">
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
@@ -2304,6 +2307,7 @@ async function saveBaseline(mid) {
       toast(`❗ ${m.brand} opening GMV NOT saved — ${err}. Tap the red card to retry.`);
     } else {
       meta.saved = true; meta.error = null;
+      meta.savedAt = nowStamp();
       meta.savedStatus = bs;
       if (bs !== 'Operated') {
         // any shots on the phone are superseded by the status save
