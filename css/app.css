@@ -509,3 +509,70 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
 .mb-state.on { color: #0F6E56; border-color: #9FE1CB; background: #E9F7F1; }
 .mb-state.off { color: var(--red); border-color: #F0C4C8; background: #FDF2F3; }
 .mb-state:active { filter: brightness(.94); }
+
+/* ============================================================
+   KITCHENBASE PREVIEW THEME (branch kitchenbase-preview only)
+   Yellow #FFE600 is a signal, never decoration: the LIVE badge,
+   the progress arc, the row being worked on, and the save button.
+   Panels square-ish, buttons pill, functional colours untouched.
+   ============================================================ */
+:root {
+  --kb-yellow: #FFE600;
+  --kb-ink: #000;
+  --kb-bright: #FAFAFA;
+  --kb-muted-d: #9A9A9A;   /* muted-on-black */
+}
+
+/* ---- login: black field, yellow action ---- */
+.login-hero { background: var(--kb-ink); color: var(--kb-bright); }
+.login-hero h1, .login-hero .login-sub { color: var(--kb-bright); }
+.login-logo { background: var(--kb-yellow); border-radius: 18px; }
+#view-login { background: var(--kb-bright); }
+
+/* ---- app header + progress fuse into one black hero ---- */
+.app-header { background: var(--kb-ink); color: var(--kb-bright); border-bottom: 0; }
+.app-header .icon-btn { color: var(--kb-bright); }
+.header-site { font-size: 19px; letter-spacing: -.4px; }
+.header-meta { color: var(--kb-muted-d); }
+.progress-card {
+  background: var(--kb-ink); color: var(--kb-bright);
+  margin: 0; padding: 6px 16px 20px; border-radius: 0; box-shadow: none;
+}
+#prog-title { color: var(--kb-bright); }
+#prog-sub { color: var(--kb-muted-d); }
+.prog-flag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px; font-weight: 700; color: #FFD9A0; margin-top: 5px;
+}
+.ring-bg { stroke: #2B2B2B; }
+.ring-fg { stroke: var(--kb-yellow); }
+.ring-label { color: var(--kb-bright); flex-direction: column; line-height: 1.02; }
+.ring-label b { color: var(--kb-yellow); font-size: 22px; }
+.ring-label .rl-word {
+  font-size: 9px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--kb-muted-d); margin-top: 1px;
+}
+
+/* demo badge doubles as the preview banner: yellow, loud, honest */
+.demo-badge { background: var(--kb-yellow); color: var(--kb-ink); font-weight: 800; }
+
+/* ---- the round: rounded cards stay, worked-on row gets the yellow edge ---- */
+.merchant-card { border-left: 3px solid transparent; }
+.merchant-card:active { border-color: var(--kb-ink); }
+.merchant-card.reading-now { border-left-color: var(--kb-yellow); background: #FFFDEE; }
+.m-status {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px; font-variant-numeric: tabular-nums;
+}
+
+/* ---- capture: vendor wordmarks + pill buttons + yellow save ---- */
+.ch-wm { height: 16px; width: auto; display: block; margin-right: auto; }
+.btn-primary {
+  background: var(--kb-yellow); color: var(--kb-ink); border-radius: 9999px;
+  box-shadow: none; font-weight: 800;
+}
+.btn-primary:disabled { background: #E8E6E1; color: #5A5E66; }
+.photo-slot, .extras-add, .ns-btn, .ns-undo { border-radius: 9999px; }
+:focus-visible { outline: 2px solid #596E98; outline-offset: 3px; }
+
+/* capture view shares .app-header, so its bar is already black — nothing more */

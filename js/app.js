@@ -35,6 +35,7 @@ async function api(path, opts) {
   const o = { ...(opts || {}) };
   o.headers = { ...(o.headers || {}) };
   if (state.token) o.headers.Authorization = `Bearer ${state.token}`;
+  if (CONFIG.demo) return DEMO.fetch(path, o);   // preview build: canned, offline
   const r = await fetch(`${CONFIG.apiBase}${path}`, o);
   if (r.status === 401) {
     setSession('');
@@ -56,7 +57,8 @@ function photoUrl(id) {
 async function loadCatalog() {
   $('site-grid').innerHTML = '<p class="ab-note"><span class="spinner sm"></span> Loading sites…</p>';
   try {
-    const r = await fetch(`${CONFIG.apiBase}/api/catalog`);
+    const r = CONFIG.demo ? await DEMO.fetch('/api/catalog')
+      : await fetch(`${CONFIG.apiBase}/api/catalog`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const raw = await r.json();
     DATA = {
@@ -343,6 +345,11 @@ function downscale(dataUrl, maxPx = 1600, quality = 0.85) {
 
 /* ---------- generic helpers ---------- */
 const money = (v) => '$' + Number(v).toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/* "2026-08-09 21:04:11" or ISO -> "21:04"; anything unparsable -> '' */
+const hhmm = (stampStr) => {
+  const m = String(stampStr || '').match(/[T ](\d{2}:\d{2})/);
+  return m ? m[1] : '';
+};
 function show(viewId) {
   document.querySelectorAll('.view').forEach((v) => v.classList.add('hidden'));
   $(viewId).classList.remove('hidden');
@@ -480,6 +487,13 @@ $('staff-search').oninput = () => {
    no PINs handed around) — everyone else just enters theirs. */
 function proceedToPin(staff) {
   state.staff = staff;
+  if (CONFIG.demo) {
+    /* Preview build: tap a name and you are in — no PIN exists here because
+       no real identity or data exists here either. */
+    setSession('demo-session', staff.id);
+    enterApp();
+    return;
+  }
   state.pin = '';
   state.pinFirst = '';
   state.pinMode = staff.needsPin ? 'create' : 'verify';
@@ -760,6 +774,7 @@ function serverRecToLocal(sr) {
   const rec = { status: sr.status || 'Operated', saved: true, serverSaved: true,
     recordId: sr.recordId, staffName: (sr.staff || '').replace(/\s*\([^)]*\)$/, ''),
     auditEdited: !!sr.edited, billingFlag: sr.billingFlag || '',
+    savedAt: sr.timestamp || '',
     salesDate: sr.salesDate, channels: {}, expanded: {} };
   Object.entries(sr.channels).forEach(([ch, c]) => {
     rec.channels[ch] = {
@@ -853,8 +868,11 @@ function renderChecklist() {
 
   const failed = all.filter((m) => saveFailed(state.records[m.id])
     || state.baselineMeta[m.id]?.error).length;
-  $('prog-done').textContent = doneCount;
-  $('prog-total').textContent = all.length;
+  /* The arc already says how far the round has come, so the core answers the
+     other question: how many kitchens are still ahead (design call, 9 Aug). */
+  const left = all.length - doneCount;
+  $('prog-left').textContent = doneCount === all.length && all.length ? '✓' : left;
+  $('prog-left-word').textContent = doneCount === all.length && all.length ? 'done' : 'left';
   const frac = all.length ? doneCount / all.length : 0;
   $('ring-fg').style.strokeDashoffset = 194.8 * (1 - frac);
   $('prog-sub').textContent =
@@ -862,8 +880,16 @@ function renderChecklist() {
     : failed ? `❗ ${failed} record${failed > 1 ? 's' : ''} not saved — tap the red card to retry`
     : state.hydrateError ? '⚠ Could not check the server for saved records — reload before capturing'
     : all.length === 0 ? 'No delivery merchants at this site yet'
-    : doneCount === all.length ? 'All done — great round! 🎉'
-    : `${all.length - doneCount} merchants left · tap to capture`;
+    : doneCount === all.length ? 'Round complete — every merchant recorded 🎉'
+    : `${doneCount} of ${all.length} captured · tap to continue`;
+  /* flags on today's saved rows (CHECK / NO_BASELINE): worth one glance now,
+     not a dig through Review later. Wording "to check" — not "error": most
+     flags turn out to be a wrong-day photo, nobody did anything wrong. */
+  const flags = Object.values(state.records)
+    .filter((r) => r && r.saved && r.billingFlag && r.billingFlag !== 'OK').length;
+  const flagEl = $('prog-flag');
+  flagEl.classList.toggle('hidden', flags === 0);
+  flagEl.textContent = flags ? `⚑ ${flags} to check` : '';
 
   // S12's dine-in arrives once a month as one sheet — its own entry, above the round
   const diWrap = $('dinein-entry');
@@ -904,7 +930,10 @@ function renderChecklist() {
   $('list-evening').innerHTML = all.map((m) => {
     const r = state.records[m.id];
     const done = merchantDone(m);
-    let status = '<span class="m-status pending">○ not captured</span>';
+    /* Status column carries word AND time in one slot (design call, 9 Aug):
+       a saved row shows WHEN it was captured — the audit trail made visible —
+       while an open row shows the action word. Colour-blind safe by text. */
+    let status = '<span class="m-status pending">○ capture</span>';
     if (r && r.inFlight) {
       status = '<span class="m-status pending">⬆ saving…</span>';
     } else if (r && saveFailed(r)) {
@@ -912,12 +941,14 @@ function renderChecklist() {
     } else if (done && r.status === 'Operated') {
       const tot = Object.values(r.channels).reduce((s, c) =>
         s + Number(c.finalGmv ?? c.gmv ?? 0) + (c.extras || []).reduce((t, e) => t + Number(e.gmv || 0), 0), 0);
-      status = `<div style="text-align:right"><div class="m-status done">✓ saved</div><div class="m-total">${money(tot)}</div></div>`;
+      const when = hhmm(r.savedAt);
+      const flagMark = r.billingFlag && r.billingFlag !== 'OK' ? ' ⚑' : '';
+      status = `<div style="text-align:right"><div class="m-status done">✓ ${when || 'saved'}${flagMark}</div><div class="m-total">${money(tot)}</div></div>`;
     } else if (done) {
       status = `<span class="m-status done">✓ ${esc(r.status)}</span>`;
     } else if (r && r.draft) {
       status = (r.pending || 0) > 0
-        ? '<span class="m-status pending">' + ic('loader') + ' AI reading…</span>'
+        ? '<span class="m-status pending">' + ic('loader') + ' reading…</span>'
         : '<span class="m-status flag">' + ic('dot') + ' confirm readings</span>';
     }
     const tags = [
@@ -925,7 +956,8 @@ function renderChecklist() {
       m.type === 'Cloud Retail' ? '<span class="tag retail">CLOUD RETAIL</span>' : '',
       m.aigens ? '<span class="tag aigens">AIGENS</span>' : '',
     ].join('');
-    return `<div class="merchant-card ${done ? 'done' : ''}" data-id="${esc(m.id)}" data-mode="evening">
+    const workingOn = !!(r && r.draft && (r.pending || 0) > 0);   // yellow edge = happening now
+    return `<div class="merchant-card ${done ? 'done' : ''} ${workingOn ? 'reading-now' : ''}" data-id="${esc(m.id)}" data-mode="evening">
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div><div class="m-tags">${tags}</div></div>
       ${status}
@@ -1222,8 +1254,10 @@ function renderReview() {
 
 /* ---------- capture ---------- */
 const CH_META = {
-  grab:     { name: 'GrabFood',  cls: 'grab',   logo: 'G', hint: 'Net sales + Completed' },
-  fp:       { name: 'foodpanda', cls: 'fp',     logo: 'f', hint: 'All − Cancelled' },
+  /* wm: official vendor wordmark (SVG in icons/, colours baked in) shown in
+     the channel-card header instead of the letter block */
+  grab:     { name: 'GrabFood',  cls: 'grab',   logo: 'G', hint: 'Net sales + Completed', wm: 'icons/grab-wordmark.svg' },
+  fp:       { name: 'foodpanda', cls: 'fp',     logo: 'f', hint: 'All − Cancelled', wm: 'icons/foodpanda-wordmark.svg' },
   others:   { name: 'Others',    cls: 'other',  logo: 'O', hint: 'AIGENS / other platforms' },
   catering: { name: 'Catering',  cls: 'cater',  logo: 'C', hint: 'Catering orders' },
   dinein:   { name: 'Dine-in',   cls: 'dinein', logo: 'D', hint: 'POS screenshot' },
@@ -1372,10 +1406,13 @@ function renderChannelCards() {
       </button>`;
     }
     const base = mode === 'evening' && !state.current.offset && m.overnight && CORE.includes(ch) ? state.baselines[`${m.id}:${ch}`] : null;
+    const head = meta.wm
+      ? `<img class="ch-wm" src="${meta.wm}" alt="${meta.name}">`
+      : `<div class="ch-logo ${meta.cls}">${meta.logo}</div>
+        <div class="ch-name">${meta.name}</div>`;
     return `<div class="channel-card" id="card-${ch}">
       <div class="ch-head">
-        <div class="ch-logo ${meta.cls}">${meta.logo}</div>
-        <div class="ch-name">${meta.name}</div>
+        ${head}
         <div class="ch-hint">${m.aigens && ch === 'others' ? 'AIGENS line on X-Reading' : meta.hint}</div>
       </div>
       <div class="ch-body">${channelBodyHTML(ch, val, base, mode)}</div>
@@ -2168,6 +2205,9 @@ async function saveRecord(mid) {
       toast(`❗ ${m.brand} NOT saved — ${err}. It stays on your list; tap the red card to retry.`);
     } else {
       rec.saved = true; rec.serverSaved = true; rec.draft = false; rec.saveError = null;
+      rec.savedAt = nowStamp();          // feeds the ✓ HH:MM status column
+      const bflag = resp && (typeof resp.billing === 'string' ? resp.billing : resp.billing && resp.billing.flag);
+      if (bflag) rec.billingFlag = bflag;
       adoptLinks(rec, resp || {});
       if (rec.status !== 'Operated') rec.channels = {};
       if (resp && resp.billing === 'NO_BASELINE') {
@@ -2587,9 +2627,13 @@ $('ab-create').onclick = async () => {
 /* ---------- boot ---------- */
 {
   const b = $('mode-badge');
-  b.textContent = 'LIVE · AI readings + saves to the GMV sheet — always double-check against the device screen';
-  b.style.background = 'var(--green-bg)';
-  b.style.color = 'var(--green)';
+  if (CONFIG.demo) {
+    b.textContent = 'PREVIEW · invented data, nothing is saved anywhere — the live app is untouched';
+  } else {
+    b.textContent = 'LIVE · AI readings + saves to the GMV sheet — always double-check against the device screen';
+    b.style.background = 'var(--green-bg)';
+    b.style.color = 'var(--green)';
+  }
 }
 renderPinPad();
 show('view-login');
