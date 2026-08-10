@@ -2032,7 +2032,36 @@ function baselineDirty(mid) {
   return baselineShots(mid).some((b) => b._dirty || b.photoDirty);
 }
 
+/* Channel-readiness ring in the capture header — the checklist's ring language
+   carried through: the yellow arc closes as screens come in, full = save. */
+function updateCapRing() {
+  const el = $('cap-ring');
+  if (!el || !state.current) return;
+  const { m, mode } = state.current;
+  const hide = () => el.classList.add('hidden');
+  if (!m || (state.site && state.site.id === CATERING_SITE)) return hide();
+  const chans = coreFor(m);
+  if (!chans.length) return hide();
+  let ready = 0;
+  if (mode === 'baseline') {
+    if (baseStatus(m.id) !== 'Operated') return hide();
+    ready = baselineSettled(m.id).length;
+  } else {
+    const rec = curRec();
+    if (rec.status !== 'Operated') return hide();
+    ready = chans.filter((ch) => {
+      const v = rec.channels[ch];
+      return v && ((v.finalOrders !== undefined && v.finalGmv !== undefined) || v.noSales);
+    }).length;
+  }
+  el.classList.remove('hidden');
+  el.style.background =
+    `conic-gradient(var(--kb-yellow) ${Math.round((ready / chans.length) * 360)}deg, #2B2B2B 0deg)`;
+  $('cap-ring-label').textContent = `${ready}/${chans.length}`;
+}
+
 function updateSaveBtn() {
+  updateCapRing();
   const { m, mode, offset } = state.current;
   const btn = $('btn-save');
   if (mode === 'baseline') {
@@ -2630,6 +2659,8 @@ $('ab-create').onclick = async () => {
 
 /* ---------- boot ---------- */
 {
+  const hl = $('hero-live');
+  if (hl) hl.textContent = CONFIG.demo ? 'PREVIEW' : 'LIVE';
   const b = $('mode-badge');
   if (CONFIG.demo) {
     b.textContent = 'PREVIEW · invented data, nothing is saved anywhere — the live app is untouched';

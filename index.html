@@ -88,6 +88,7 @@
   <div class="demo-badge" id="mode-badge">DEMO MODE · AI readings are simulated — real engine comes with the backend</div>
 
   <div class="progress-card">
+    <span class="hero-live" id="hero-live">LIVE</span>
     <div class="progress-ring" id="progress-ring">
       <svg viewBox="0 0 72 72"><circle class="ring-bg" cx="36" cy="36" r="31"/><circle class="ring-fg" id="ring-fg" cx="36" cy="36" r="31"/></svg>
       <div class="ring-label"><b id="prog-left">0</b><span class="rl-word" id="prog-left-word">left</span></div>
@@ -166,7 +167,9 @@
       <div class="header-site" id="cap-merchant">Merchant</div>
       <div class="header-meta" id="cap-sub">Kitchen</div>
     </div>
-    <span class="header-spacer"></span>
+    <!-- channel-readiness ring: the same ring language as the checklist —
+         the yellow arc closing = both screens in, save unlocks -->
+    <div class="mini-ring hidden" id="cap-ring"><i id="cap-ring-label">0/2</i></div>
   </header>
 
   <div class="capture-body" id="capture-body">
