@@ -959,7 +959,10 @@ function renderChecklist() {
       m.type === 'Cloud Retail' ? '<span class="tag retail">CLOUD RETAIL</span>' : '',
       m.aigens ? '<span class="tag aigens">AIGENS</span>' : '',
     ].join('');
-    const workingOn = !!(r && r.draft && (r.pending || 0) > 0);   // yellow edge = happening now
+    /* Yellow edge = in-progress work not yet saved (photo taken, reading, or
+       waiting for confirm) — it stays lit until the row is actually committed,
+       not just for the few seconds the AI is reading (Ernest, 10 Aug). */
+    const workingOn = !!(r && r.draft);
     return `<div class="merchant-card ${done ? 'done' : ''} ${workingOn ? 'reading-now' : ''}" data-id="${esc(m.id)}" data-mode="evening">
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div><div class="m-tags">${tags}</div></div>
