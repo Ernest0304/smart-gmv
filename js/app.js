@@ -988,7 +988,12 @@ function logout() {
 }
 
 /* ---------- menu ---------- */
-$('btn-menu').onclick = () => $('menu-overlay').classList.remove('hidden');
+$('btn-menu').onclick = () => {
+  /* Sales reports are permissioned per person (Staff col H, granted by the
+     manager). No permission -> no entry; the server 403s regardless. */
+  $('menu-billing').classList.toggle('hidden', !(state.staff && state.staff.reports));
+  $('menu-overlay').classList.remove('hidden');
+};
 $('menu-cancel').onclick = () => $('menu-overlay').classList.add('hidden');
 $('menu-overlay').onclick = (e) => { if (e.target === $('menu-overlay')) $('menu-overlay').classList.add('hidden'); };
 $('menu-logout').onclick = () => { $('menu-overlay').classList.add('hidden'); attemptLogout(); };
@@ -2779,6 +2784,11 @@ async function loadBilling() {
                          : `month=${bl.month}`;
     const r = await api(`/api/billing?site=${state.site.id}&${qs}`);
     const d = await r.json().catch(() => ({}));
+    if (r.status === 403) {
+      // permission, not a glitch — retrying will not change the answer
+      $('bl-body').innerHTML = `<p class="ab-note">${ic('lock')} ${esc(d.detail || 'Sales reports need permission from the manager.')}</p>`;
+      return;
+    }
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
     renderBilling(d);
   } catch (e) {

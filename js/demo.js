@@ -70,13 +70,13 @@ const DEMO = (() => {
     if (p === '/api/catalog') {
       return reply({ sites: [{ id: 'S1', name: 'Tampines (demo)' }],
         staff: [{ id: 'st-demo', name: 'Demo User', homeSites: ['S1'],
-                  needsPin: false, partTime: false }],
+                  needsPin: false, partTime: false, reports: true }],
         customers: [], merchants: MERCHANTS });
     }
     if (p === '/api/staff/verify') {
       await wait(350);
       return reply({ ok: true, token: 'demo-session',
-        staff: { id: 'st-demo', name: 'Demo User' } });
+        staff: { id: 'st-demo', name: 'Demo User', reports: true } });
     }
     if (p === '/api/records/today') {
       await wait(400);
