@@ -6,9 +6,9 @@ const CONFIG = (() => {
   const params = new URLSearchParams(location.search);
   const qp = params.get('api');
   const local = qp && /^https?:\/\/localhost(:\d+)?$/.test(qp) ? qp : null;
-  /* PREVIEW BRANCH: demo is ON by default — every network call is answered by
-     js/demo.js with canned data. No backend, no sheet, nothing leaves the
-     phone, no PIN. `?demo=0` reaches the real backend (don't, on this branch). */
+  /* demo=1: every network call is answered by js/demo.js with canned invented
+     data and roster taps log straight in — no backend, no sheet, no PIN.
+     Kept in production as a safe walkthrough mode for showing the app around. */
   return { apiBase: local || 'https://smart-gmv-server-production.up.railway.app',
-           demo: params.get('demo') !== '0' };
+           demo: params.get('demo') === '1' };
 })();
