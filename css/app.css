@@ -531,7 +531,9 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
 
 /* ---- app header + progress fuse into one black hero ---- */
 .app-header { background: var(--kb-ink); color: var(--kb-bright); border-bottom: 0; }
-.app-header .icon-btn { color: var(--kb-bright); }
+/* ghost buttons on the black hero — a white block with a white glyph is invisible */
+.app-header .icon-btn { color: var(--kb-bright); background: transparent; border-color: #3A3A3A; }
+.app-header .icon-btn:active { background: #1C1C1C; }
 .header-site { font-size: 19px; letter-spacing: -.4px; }
 .header-meta { color: var(--kb-muted-d); }
 .progress-card {

@@ -2668,9 +2668,9 @@ $('ab-create').onclick = async () => {
   if (CONFIG.demo) {
     b.textContent = 'PREVIEW · invented data, nothing is saved anywhere — the live app is untouched';
   } else {
-    b.textContent = 'LIVE · AI readings + saves to the GMV sheet — always double-check against the device screen';
-    b.style.background = 'var(--green-bg)';
-    b.style.color = 'var(--green)';
+    /* The hero's yellow LIVE badge carries the mode now — the old green strip
+       said the same thing again and broke the black hero in two (Ernest, 10 Aug). */
+    b.classList.add('hidden');
   }
 }
 renderPinPad();
