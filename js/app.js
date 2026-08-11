@@ -561,7 +561,7 @@ async function submitRegistration(allowDuplicate) {
   $('reg-submit').textContent = 'Registering…';
   $('reg-error').classList.add('hidden');
   try {
-    const r = await fetch(`${CONFIG.apiBase}/api/staff`, {
+    const r = await api('/api/staff', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, homeSite: $('reg-home').value, pin: $('reg-pin').value,
         partTimer: regEmp !== 'full',
@@ -674,7 +674,7 @@ const pinFail = (msg) => {
 async function claimPin() {
   setPinBusy(true);
   try {
-    const r = await fetch(`${CONFIG.apiBase}/api/staff/pin`, {
+    const r = await api('/api/staff/pin', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ staffId: state.staff.id, pin: state.pin }),
     });
@@ -708,7 +708,7 @@ async function claimPin() {
 async function verifyPin() {
   setPinBusy(true);
   try {
-    const r = await fetch(`${CONFIG.apiBase}/api/staff/verify`, {
+    const r = await api('/api/staff/verify', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ staffId: state.staff.id, pin: state.pin }),
     });

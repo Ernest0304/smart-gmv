@@ -73,10 +73,21 @@ const DEMO = (() => {
                   needsPin: false, partTime: false, reports: true }],
         customers: [], merchants: MERCHANTS });
     }
-    if (p === '/api/staff/verify') {
+    /* Every staff endpoint must be answered here, not only the ones the happy
+       path uses: "I'm not on the list" is one tap away on the demo login screen,
+       and before this it wrote a real row to the live Staff sheet. */
+    if (p === '/api/staff/verify' || p === '/api/staff/pin') {
       await wait(350);
       return reply({ ok: true, token: 'demo-session',
         staff: { id: 'st-demo', name: 'Demo User', reports: true } });
+    }
+    if (p === '/api/staff' && method === 'POST') {
+      await wait(400);
+      let name = 'Demo User';
+      try { name = JSON.parse(opts.body || '{}').name || name; } catch (e) { /* keep */ }
+      return reply({ ok: true, token: 'demo-session',
+        staff: { id: 'st-demo-new', name, home: 'S1', homeSites: ['S1'],
+                 partTimer: false, needsPin: false, reports: true } });
     }
     if (p === '/api/records/today') {
       await wait(400);
