@@ -552,7 +552,10 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
 }
 #prog-title { color: var(--kb-bright); }
 #prog-sub { color: var(--kb-muted-d); }
-.prog-flag {
+/* p.prog-flag, not .prog-flag: the base sheet's `.progress-text p` is a class
+   plus a type selector, so it outranks a bare class and this line rendered in
+   the light theme's grey on black at 3.23:1 (audit, 11 Aug). */
+.progress-text p.prog-flag {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px; font-weight: 700; color: #FFD9A0; margin-top: 5px;
 }
