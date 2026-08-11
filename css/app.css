@@ -543,7 +543,10 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
 .app-header .icon-btn:active { background: #1C1C1C; }
 .header-site { font-size: 19px; letter-spacing: -.4px; }
 .header-meta { color: var(--kb-muted-d); }
-.progress-card {
+/* ONLY the checklist's hero card. The billing and monthly-dine-in views reuse
+   .progress-card for their headline figures, and blackening those left dark
+   .bl-big text on a black ground at ~1.3:1 (audit, 11 Aug). */
+#view-checklist > .progress-card {
   background: var(--kb-ink); color: var(--kb-bright);
   margin: -1px 0 0; padding: 7px 16px 20px; border-radius: 0; box-shadow: none;
 }
@@ -589,7 +592,7 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
 /* capture view shares .app-header, so its bar is already black — nothing more */
 
 /* hero badge + capture-header readiness ring (sample-D parity, 10 Aug) */
-.progress-card { position: relative; }
+#view-checklist > .progress-card { position: relative; }
 .hero-live {
   position: absolute; top: 12px; right: 16px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

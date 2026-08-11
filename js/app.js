@@ -910,7 +910,7 @@ function renderChecklist() {
         : bm.savedStatus === 'No Sales' ? '✓ no sales'
         : `✓ ${hhmm(bm.savedAt) || 'recorded'}`]
       : bm.inFlight ? ['pending', '⬆ saving…']
-      : bm.error ? ['flagred', ic('bang') + ' not saved — tap to retry']
+      : bm.error ? ['flagred', ic('bang') + ' not saved']
       : reading ? ['pending', ic('loader') + ' reading…']
       : baselineHasShots(m) ? ['flag', ic('dot') + ' confirm']
       : ['flag', '○ shoot opening'];
@@ -940,7 +940,9 @@ function renderChecklist() {
     if (r && r.inFlight) {
       status = '<span class="m-status pending">⬆ saving…</span>';
     } else if (r && saveFailed(r)) {
-      status = '<span class="m-status flagred">' + ic('bang') + ' not saved — tap to retry</span>';
+      // short: the long form squeezed the brand name to 66px at 390px, and it
+      // is the failed rows whose name matters most (audit, 11 Aug)
+      status = '<span class="m-status flagred">' + ic('bang') + ' not saved</span>';
     } else if (done && r.status === 'Operated') {
       const tot = Object.values(r.channels).reduce((s, c) =>
         s + Number(c.finalGmv ?? c.gmv ?? 0) + (c.extras || []).reduce((t, e) => t + Number(e.gmv || 0), 0), 0);
