@@ -2605,16 +2605,22 @@ function renderCustomers(q) {
     .filter((c) => c.site === state.site.id)
     .filter((c) => c.company.toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => kitchenOrder(a.kitchen) - kitchenOrder(b.kitchen) || a.company.localeCompare(b.company));
+  /* One card per LICENSEE, not per contract: a company that has renewed used to
+     appear two or three times (Ernest's screenshot, 10 Aug). The server groups
+     the terms and picks the Opportunity covering the day the brand is created,
+     so staff choose a company and never an ID. */
   $('ab-customers').innerHTML = list.map((c) =>
     `<button class="staff-btn" data-opp="${esc(c.oppId)}">
       <span class="avatar kav">${esc(c.kitchen)}</span>
-      <span class="cname">${esc(c.company)}</span>
+      <span class="cname">${esc(c.company)}${(c.terms || []).length > 1
+        ? `<small class="customer-meta">${c.terms.length} contract terms on record</small>` : ''}</span>
     </button>`).join('') || '<p class="ab-note">No contracted customers found for this site.</p>';
   $('ab-customers').querySelectorAll('.staff-btn').forEach((b) => b.onclick = () => {
     ab.customer = DATA.customers.find((c) => c.oppId === b.dataset.opp);
     $('ab-picked').innerHTML = `<span class="avatar kav">${esc(ab.customer.kitchen)}</span>
       <span><div class="cname">${esc(ab.customer.company)}</div>
-      <div class="customer-meta">${esc(state.site.name)} · SFDC ID will be copied to the new row</div></span>`;
+      <div class="customer-meta">${esc(state.site.name)} · the contract covering today is used${
+        (ab.customer.terms || []).length > 1 ? ', and a signed renewal is carried over automatically' : ''}</div></span>`;
     abPage(2);
     updateCreateBtn();
   });
