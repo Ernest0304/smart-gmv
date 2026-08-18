@@ -1000,6 +1000,7 @@ $('menu-cancel').onclick = () => $('menu-overlay').classList.add('hidden');
 $('menu-overlay').onclick = (e) => { if (e.target === $('menu-overlay')) $('menu-overlay').classList.add('hidden'); };
 $('menu-logout').onclick = () => { $('menu-overlay').classList.add('hidden'); attemptLogout(); };
 $('menu-pin').onclick = () => { $('menu-overlay').classList.add('hidden'); openPinChange(); };
+$('menu-site').onclick = () => { $('menu-overlay').classList.add('hidden'); attemptSiteSwitch(); };
 
 /* ---------- change my PIN (Ernest 30 Jul) ---------- */
 function pcValid() {
@@ -2533,20 +2534,53 @@ function logoutRisks() {
   });
   return list;
 }
-function attemptLogout() {
-  const risks = logoutRisks();
-  if (!risks.length) { logout(); return; }
+/* The guard fronts anything that would destroy unsaved captures. Logging out
+   and switching site wipe the same in-memory state, so they share one gate —
+   only the verb on the danger button and the action behind it change. */
+let guardProceed = logout;
+function showGuard(risks, dangerLabel, cancelLabel, proceed) {
+  guardProceed = proceed;
+  $('guard-danger-label').textContent = dangerLabel;
+  $('guard-cancel').textContent = cancelLabel;
   $('guard-list').textContent = risks.map((u) =>
     `${u.m.kitchen} ${u.m.brand}${u.kind === 'baseline' ? ' (opening GMV)' : u.kind === 'draft' ? ' (not confirmed yet — open it and confirm)' : ''}`
   ).join('  ·  ');
   $('guard-overlay').classList.remove('hidden');
 }
+function attemptLogout() {
+  const risks = logoutRisks();
+  if (!risks.length) { logout(); return; }
+  showGuard(risks, 'Log out anyway — unsaved data will be lost', 'Stay logged in', logout);
+}
+function attemptSiteSwitch() {
+  const risks = logoutRisks();
+  if (!risks.length) { openSiteSwitch(); return; }
+  showGuard(risks, 'Switch anyway — unsaved data will be lost', 'Stay on this site', openSiteSwitch);
+}
+function openSiteSwitch() {
+  $('site-switch-grid').innerHTML = DATA.sites.map((st) => {
+    const n = st.id === CATERING_SITE
+      ? DATA.merchants.filter((m) => m.catering && !m.disabled).length
+      : DATA.merchants.filter((m) => m.site === st.id).length;
+    const here = state.site && st.id === state.site.id;
+    return `<button class="site-btn" data-site="${esc(st.id)}" ${here ? 'disabled style="opacity:.45"' : ''}>${esc(st.name)}<small>${esc(st.id)} · ${here ? 'you are here' : n + ' merchants'}</small></button>`;
+  }).join('');
+  $('site-switch-grid').querySelectorAll('.site-btn:not([disabled])').forEach((btn) => btn.onclick = () => {
+    $('site-overlay').classList.add('hidden');
+    state.site = DATA.sites.find((st) => st.id === btn.dataset.site);
+    enterApp();               // the login path's own reset: merchants, records,
+                              // history, review caches, header, hydrateToday
+    toast(`Now on ${state.site.name}`);
+  });
+  $('site-overlay').classList.remove('hidden');
+}
+$('site-switch-cancel').onclick = () => $('site-overlay').classList.add('hidden');
 $('guard-cancel').onclick = () => $('guard-overlay').classList.add('hidden');
 $('guard-retry').onclick = () => {
   $('guard-overlay').classList.add('hidden');
   unsavedRecords().forEach((u) => (u.kind === 'baseline' ? saveBaseline(u.m.id) : saveRecord(u.m.id)));
 };
-$('guard-logout').onclick = () => { $('guard-overlay').classList.add('hidden'); logout(); };
+$('guard-logout').onclick = () => { $('guard-overlay').classList.add('hidden'); guardProceed(); };
 
 /* ---------- add new brand (two pages) ---------- */
 const ab = { customer: null };
@@ -2758,7 +2792,7 @@ function closeTopLayer() {
   const overlays = [
     ['viewer-overlay', 'viewer-close'], ['pinchange-overlay', 'pc-cancel'],
     ['guard-overlay', 'guard-cancel'], ['convert-overlay', 'convert-cancel'],
-    ['dup-overlay', 'dup-cancel'], ['menu-overlay', 'menu-cancel'],
+    ['dup-overlay', 'dup-cancel'], ['menu-overlay', 'menu-cancel'], ['site-overlay', 'site-switch-cancel'],
   ];
   for (const [ov, btn] of overlays) {
     const el = $(ov);
