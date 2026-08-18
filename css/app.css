@@ -615,3 +615,12 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
   font-variant-numeric: tabular-nums;
 }
 .mini-ring.hidden { display: none; }
+
+/* Review: jump to a date beyond the chip week. Sits under the chips rather than
+   beside them — on a phone the chip row already scrolls, and a control that
+   scrolls out of reach is a control nobody finds. */
+.rv-pick {
+  display: flex; align-items: center; gap: 10px;
+  margin: 10px 0 0; font-size: .84rem; color: var(--ink-2);
+}
+.rv-pick .search-input { flex: 1; max-width: 190px; }

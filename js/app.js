@@ -1136,7 +1136,10 @@ function renderBrands() {
 }
 
 /* ---------- review previous days (real GMV Raw Data rows) ---------- */
-const rv = { offset: 0, loading: false, loaded: false, error: null, unmatched: {} };
+const REVIEW_CHIP_DAYS = 6;          // the week the chips cover
+const REVIEW_MAX_DAYS = 30;          // matches the server's EDIT_WINDOW_DAYS
+const rv = { offset: 0, loading: false, loaded: false, error: null, unmatched: {},
+             picked: null };          // a day past the chips, reached by the picker
 function openReview() {
   rv.offset = 0;
   renderReview();
@@ -1181,12 +1184,68 @@ async function loadHistory(force) {
   renderReview();
 }
 
+/* One day beyond the chip week. loadHistory pulls the whole week in a single
+   call because those days are read constantly; a picked day is one date, asked
+   for on demand, and cached so flipping back to it costs nothing. */
+async function loadDay(offset) {
+  const store = state.history[offset];
+  if (store && store._loaded) { renderReview(); return; }
+  rv.loading = true; rv.error = null; renderReview();
+  try {
+    const day = dateForOffset(offset);
+    const r = await api(`/api/records?site=${state.site.id}&from=${day}&to=${day}`);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    state.history[offset] = {};
+    rv.unmatched[offset] = [];
+    (d.records || []).forEach((sr) => {
+      const m = state.merchants.find((x) => x.kitchen === sr.kitchen && x.brand === sr.brand);
+      if (!m) { rv.unmatched[offset].push(sr); return; }
+      if (sr.recordType === 'baseline') {
+        (state.history[offset]._baselines = state.history[offset]._baselines || {})[m.id] = sr;
+      } else {
+        state.history[offset][m.id] = serverRecToLocal(sr);
+      }
+    });
+    state.history[offset]._loaded = true;
+  } catch (e) {
+    rv.error = e.message;
+  }
+  rv.loading = false;
+  renderReview();
+}
+
 function renderReview() {
   $('rv-sub').textContent = `${state.site.name} · ${state.site.id}`;
-  const days = [...Array(7)].map((_, i) => ({ offset: i, label: dayLabel(i) }));
+  const days = [...Array(REVIEW_CHIP_DAYS + 1)].map((_, i) => ({ offset: i, label: dayLabel(i) }));
+  // a picked day sits at the end as its own chip, so the reader can see which
+  // day they are on and tap back to it after visiting the week
+  if (rv.picked && rv.picked > REVIEW_CHIP_DAYS) days.push({ offset: rv.picked, label: dayLabel(rv.picked) });
   $('rv-dates').innerHTML = days.map((d) =>
     `<button class="chip ${rv.offset === d.offset ? 'active' : ''}" data-o="${d.offset}">${esc(d.label)}</button>`).join('');
-  $('rv-dates').querySelectorAll('.chip').forEach((b) => b.onclick = () => { rv.offset = +b.dataset.o; renderReview(); });
+  $('rv-dates').querySelectorAll('.chip').forEach((b) => b.onclick = () => {
+    rv.offset = +b.dataset.o;
+    if (rv.offset > REVIEW_CHIP_DAYS) loadDay(rv.offset); else renderReview();
+  });
+
+  const pick = $('rv-date');
+  if (pick) {
+    pick.max = dateForOffset(1);                  // yesterday; today is the round itself
+    pick.min = dateForOffset(REVIEW_MAX_DAYS);
+    pick.value = rv.offset ? dateForOffset(rv.offset) : '';
+    pick.onchange = () => {
+      if (!pick.value) return;
+      const off = offsetForDate(pick.value);
+      if (off < 1 || off > REVIEW_MAX_DAYS) {
+        toast(`Pick a date within the last ${REVIEW_MAX_DAYS} days`);
+        pick.value = rv.offset ? dateForOffset(rv.offset) : '';
+        return;
+      }
+      rv.offset = off;
+      rv.picked = off > REVIEW_CHIP_DAYS ? off : null;
+      if (off > REVIEW_CHIP_DAYS) loadDay(off); else renderReview();
+    };
+  }
 
   if (rv.offset && rv.loading) {
     $('rv-list').innerHTML = '<p class="ab-note" style="margin-top:14px"><span class="spinner sm"></span> Loading saved records…</p>';
