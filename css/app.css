@@ -624,3 +624,65 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
   margin: 10px 0 0; font-size: .84rem; color: var(--ink-2);
 }
 .rv-pick .search-input { flex: 1; max-width: 190px; }
+
+/* ============================================================================
+   DESKTOP (>= 900px)
+   Everything below lives inside one width query. The rest of this stylesheet
+   has no width breakpoints at all, so a phone never parses a line of it — the
+   mobile layout is untouched by construction, not by care.
+
+   The app is built for a corridor at 9pm: one thumb, one column, big targets.
+   On a desk that same column leaves two thirds of the screen empty and turns a
+   30-merchant site into a long scroll. Desktop keeps every interaction and
+   every component identical, and only spends the width it is given.
+   ========================================================================== */
+@media (min-width: 900px) {
+
+  /* the column becomes a page */
+  .view { max-width: 1180px; padding: 0 24px 40px; }
+
+  /* header spans the page and stops looking like a phone chrome bar */
+  .app-header {
+    margin: 0 -24px; padding-left: 40px; padding-right: 40px;
+    border-radius: 0;
+  }
+  .header-center { text-align: left; padding-left: 8px; }
+  .header-site { font-size: 20px; }
+
+  /* hero: ring + copy sit beside the round's headline instead of stacking */
+  .progress-card { margin: 20px 0 4px; padding: 20px 24px; }
+  .progress-ring, .progress-ring svg { width: 84px; height: 84px; }
+
+  .demo-badge { margin: 0 -24px; }
+
+  /* the lists: a phone scrolls, a desk scans. Three columns at 1180px, two
+     when the window is narrower — auto-fill keeps it fluid between. */
+  .merchant-list {
+    margin: 0; display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  }
+  .section-label { margin: 26px 0 10px; }
+
+  /* hover is a desktop-only affordance; the phone has :active and keeps it */
+  .merchant-card { transition: border-color .12s, transform .12s; }
+  .merchant-card:hover { border-color: var(--line); transform: translateY(-1px); }
+
+  /* login: four sites per row instead of two */
+  .site-grid { grid-template-columns: repeat(4, 1fr); }
+  .login-card { border-radius: 20px; margin-top: 8px; padding: 30px 32px 40px; }
+  .login-hero { padding-top: 40px; }
+
+  /* review: the chip row has room to breathe, no horizontal scroll.
+     !important because the element carries an inline style — inline beats every
+     selector, and the first version of this rule silently did nothing. Scoped
+     inside the width query, so the phone's scrolling row is untouched. */
+  #rv-dates { flex-wrap: wrap !important; overflow-x: visible !important; }
+
+  /* billing / dine-in are tables — let the figures use the width */
+  #view-billing .capture-body, #view-dinein .capture-body { padding-left: 0; padding-right: 0; }
+
+  /* capture stays a narrow single task: one screenshot, four numbers, one
+     confirm. Widening a form that people read top-to-bottom only adds travel. */
+  #view-capture .capture-body { max-width: 560px; margin: 0 auto; }
+  #view-capture .save-bar { max-width: 560px; }
+}
