@@ -892,6 +892,76 @@ function renderChecklist() {
   flagEl.classList.toggle('hidden', flags === 0);
   flagEl.textContent = flags ? `⚑ ${flags} to check` : '';
 
+  /* ---- Desktop dashboard (>=900px) ---------------------------------------
+     The phone never sees any of this: the container carries an inline
+     display:none and only the width query turns it on. Every figure below is
+     computed from state.records with the SAME formula the table row uses, so
+     the header cards can never disagree with the column underneath them.
+     Nothing here is invented — no sparkline, no trend arrow, because the
+     checklist does not load history. -------------------------------------- */
+  const dash = $('ck-dash');
+  if (dash) {
+    const rowTotal = (r) => Object.values(r.channels || {}).reduce((sum, c) =>
+      sum + Number(c.finalGmv ?? c.gmv ?? 0)
+          + (c.extras || []).reduce((t, e) => t + Number(e.gmv || 0), 0), 0);
+    const rowOrders = (r) => Object.values(r.channels || {}).reduce((sum, c) =>
+      sum + Number(c.finalOrders ?? c.orders ?? 0), 0);
+
+    const live = all.map((m) => ({ m, r: state.records[m.id] }))
+      .filter((x) => x.r && x.r.saved && x.r.status === 'Operated');
+    const gmv = live.reduce((s, x) => s + rowTotal(x.r), 0);
+    const orders = live.reduce((s, x) => s + rowOrders(x.r), 0);
+
+    /* per-platform split, keyed off whatever channels the site actually has */
+    const byCh = {};
+    live.forEach((x) => Object.entries(x.r.channels || {}).forEach(([k, c]) => {
+      byCh[k] = (byCh[k] || 0) + Number(c.finalGmv ?? c.gmv ?? 0)
+        + (c.extras || []).reduce((t, e) => t + Number(e.gmv || 0), 0);
+    }));
+    const chans = Object.entries(byCh).sort((a, b) => b[1] - a[1]);
+
+    const card = (k, v, sub, cls) =>
+      `<div class="kpi${cls ? ' ' + cls : ''}"><span class="kpi-k">${k}</span>` +
+      `<b class="kpi-v">${v}</b><span class="kpi-s">${sub}</span></div>`;
+
+    const pct = all.length ? Math.round(live.length / all.length * 100) : 0;
+    const kpis =
+      card('Tonight\u2019s GMV', money(gmv), `${live.length} of ${all.length} kitchens recorded`) +
+      card('Round progress', pct + '%', left ? `${left} still to capture` : 'Round complete', left ? '' : 'is-done') +
+      card('Orders', orders.toLocaleString('en-SG'), 'across recorded kitchens') +
+      card('To check', String(flags), flags ? 'flagged rows in tonight\u2019s round' : 'nothing flagged', flags ? 'is-flag' : '');
+
+    dash.innerHTML = `<div class="kpi-row">${kpis}</div>`;
+
+    const side = $('ck-side');
+    if (side) {
+      const split = chans.length
+        ? chans.map(([k, v]) => {
+            const meta = CH_META[k] || { name: k, cls: 'other' };
+            const share = gmv ? Math.round(v / gmv * 100) : 0;
+            return `<div class="split-row ch-${meta.cls}">` +
+              `<span class="split-k">${esc(meta.name)}</span>` +
+              `<span class="split-bar"><i style="width:${share}%"></i></span>` +
+              `<span class="split-v">${money(v)}<small>${share}%</small></span></div>`;
+          }).join('')
+        : '<p class="dash-empty">Platform split appears once a kitchen is recorded.</p>';
+
+      const openList = all.filter((m) => !merchantDone(m)).slice(0, 8);
+      const remaining = openList.length
+        ? openList.map((m) => `<div class="rem-row"><span class="rem-k">${esc(m.kitchen || '')}</span>` +
+            `<span class="rem-n">${esc(m.brand)}</span></div>`).join('')
+        : '<p class="dash-empty">Every kitchen on this site has been recorded.</p>';
+
+      side.innerHTML =
+        '<section class="panel"><header class="panel-h"><h3>By platform</h3>' +
+          '<span class="panel-sub">tonight</span></header>' +
+          `<div class="panel-b">${split}</div></section>` +
+        '<section class="panel"><header class="panel-h"><h3>Still to capture</h3>' +
+          `<span class="panel-sub">${left}</span></header>` +
+          `<div class="panel-b">${remaining}</div></section>`;
+    }
+  }
+
   // S12's dine-in arrives once a month as one sheet — its own entry, above the round
   const diWrap = $('dinein-entry');
   if (diWrap) {
@@ -913,7 +983,7 @@ function renderChecklist() {
       : bm.error ? ['flagred', ic('bang') + ' not saved']
       : reading ? ['pending', ic('loader') + ' reading…']
       : baselineHasShots(m) ? ['flag', ic('dot') + ' confirm']
-      : ['flag', '○ shoot opening'];
+      : ['flag todo', '○ shoot opening'];
     return `<div class="merchant-card ${bm.error ? 'failed' : ''}" data-id="${esc(m.id)}" data-mode="baseline">
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
@@ -936,7 +1006,7 @@ function renderChecklist() {
     /* Status column carries word AND time in one slot (design call, 9 Aug):
        a saved row shows WHEN it was captured — the audit trail made visible —
        while an open row shows the action word. Colour-blind safe by text. */
-    let status = '<span class="m-status pending">○ capture</span>';
+    let status = '<span class="m-status pending todo">○ capture</span>';
     if (r && r.inFlight) {
       status = '<span class="m-status pending">⬆ saving…</span>';
     } else if (r && saveFailed(r)) {
@@ -947,7 +1017,7 @@ function renderChecklist() {
       const tot = Object.values(r.channels).reduce((s, c) =>
         s + Number(c.finalGmv ?? c.gmv ?? 0) + (c.extras || []).reduce((t, e) => t + Number(e.gmv || 0), 0), 0);
       const when = hhmm(r.savedAt);
-      const flagMark = r.billingFlag && r.billingFlag !== 'OK' ? ' ⚑' : '';
+      const flagMark = r.billingFlag && r.billingFlag !== 'OK' ? ' <i class="m-flag">⚑</i>' : '';
       status = `<div style="text-align:right"><div class="m-status done">✓ ${when || 'saved'}${flagMark}</div><div class="m-total">${money(tot)}</div></div>`;
     } else if (done) {
       status = `<span class="m-status done">✓ ${esc(r.status)}</span>`;
@@ -1317,7 +1387,9 @@ function renderReview() {
           <span class="m-status flag">＋ add record</span></div>`).join('')
     : '';
 
-  $('rv-list').innerHTML = (cards + baseCards + ghostCards || (rv.offset
+  const RV_HEAD = '<div class="list-head" style="display:none"><span>Kitchen</span><span>Brand</span><span>Saved by</span><span>Orders</span><span>GMV</span><span></span></div>';
+  const rvBody = cards + baseCards + ghostCards;
+  $('rv-list').innerHTML = (rvBody ? RV_HEAD + rvBody : (rv.offset
       ? '<p class="ab-note" style="margin-top:14px">No records saved for this day.</p>'
       : '<p class="ab-note" style="margin-top:14px">Nothing saved yet today — records appear here as you save them.</p>'))
     + missingHTML;
@@ -2929,7 +3001,7 @@ function renderBilling(d) {
       <div class="bl-mini">Grab ${t.billableGrabOrders.toLocaleString()} · ${money(t.billableGrabGmv)}&nbsp;&nbsp;foodpanda ${t.billableFpOrders.toLocaleString()} · ${money(t.billableFpGmv)}&nbsp;&nbsp;manual ${(t.othersOrders + t.cateringOrders + t.dineinOrders + t.promoDineinOrders).toLocaleString()} · ${money(t.othersGmv + t.cateringGmv + t.dineinGmv + t.promoDineinGmv)}</div>
     </div>
     <input class="search-input" id="bl-search" placeholder="Filter merchants…" value="${esc(bl.q)}" style="margin-top:14px">
-    <div class="merchant-list" style="margin-top:10px">${rows}</div>
+    <div class="merchant-list" style="margin-top:10px"><div class="list-head" style="display:none"><span>Kitchen</span><span>Brand</span><span>Days</span><span>Orders</span><span>Billable GMV</span><span>Grab · foodpanda</span></div>${rows}</div>
     ${q && !shown.length ? '<p class="ab-note">No merchant matches the filter.</p>' : ''}
     ${flags}`;
   $('bl-search').oninput = () => {

@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#000000">
 <title>Smart GMV</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260818c">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260818c">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260825a">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260825a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -15,14 +15,14 @@
 <!-- ?v= pairs the HTML with matching assets — bump it on EVERY deploy, or a
      browser holding a cached copy mixes old JS with new HTML and dies silently
      (Ernest's Chrome, 30 Jul). -->
-<link rel="stylesheet" href="css/app.css?v=20260818c">
+<link rel="stylesheet" href="css/app.css?v=20260825a">
 </head>
 <body>
 
 <!-- ============ LOGIN VIEW ============ -->
 <div class="view" id="view-login">
   <div class="login-hero">
-    <div class="login-logo"><img src="icons/icon-192.png?v=20260818c" alt="" style="width:100%;height:100%;border-radius:inherit;display:block"></div>
+    <div class="login-logo"><img src="icons/icon-192.png?v=20260825a" alt="" style="width:100%;height:100%;border-radius:inherit;display:block"></div>
     <h1>Smart GMV</h1>
     <p class="login-sub">Daily sales capture · Smart City Kitchens</p>
   </div>
@@ -100,17 +100,26 @@
     </div>
   </div>
 
+  <div class="ck-dash" id="ck-dash" style="display:none"></div>
+  <aside class="ck-side" id="ck-side" style="display:none"></aside>
+
   <button class="dinein-entry hidden" id="dinein-entry">
     <svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>
     <span><b>Monthly dine-in</b><small>One sheet covers every brand for the month</small></span>
     <svg class="ic rv-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6l6 6-6 6"/></svg>
   </button>
 
+  <section class="ck-panel" id="pnl-morning">
   <div class="section-label hidden" id="sec-morning-label"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.5 4.5l2 2M17.5 17.5l2 2M19.5 4.5l-2 2M6.5 17.5l-2 2"/></svg> Opening GMV <span class="sec-hint">24-hr merchants · shoot at 10 am</span></div>
-  <div class="merchant-list" id="list-morning"></div>
+  <div class="list-head" style="display:none"><span>Kitchen</span><span>Brand</span><span>Attributes</span><span>Opening shot</span><span></span><span></span></div>
+      <div class="merchant-list" id="list-morning"></div>
+  </section>
 
+  <section class="ck-panel" id="pnl-evening">
   <div class="section-label"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.4 14.5A8.4 8.4 0 1 1 9.5 3.6a7 7 0 0 0 10.9 10.9z"/></svg> Closing GMV</div>
-  <div class="merchant-list" id="list-evening"></div>
+  <div class="list-head" style="display:none"><span>Kitchen</span><span>Brand</span><span>Attributes</span><span>Confirmed</span><span>Tonight</span><span></span></div>
+      <div class="merchant-list" id="list-evening"></div>
+  </section>
   <div style="height:40px"></div>
 </div>
 
@@ -351,8 +360,8 @@
 
 <!-- Catalog, roster and customers load live from /api/catalog at boot —
      no merchant or staff data ships with this public repo. -->
-<script src="js/config.js?v=20260818c"></script>
-<script src="js/demo.js?v=20260818c"></script>
-<script src="js/app.js?v=20260818c"></script>
+<script src="js/config.js?v=20260825a"></script>
+<script src="js/demo.js?v=20260825a"></script>
+<script src="js/app.js?v=20260825a"></script>
 </body>
 </html>

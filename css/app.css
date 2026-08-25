@@ -624,65 +624,338 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
   margin: 10px 0 0; font-size: .84rem; color: var(--ink-2);
 }
 .rv-pick .search-input { flex: 1; max-width: 190px; }
-
 /* ============================================================================
-   DESKTOP (>= 900px)
-   Everything below lives inside one width query. The rest of this stylesheet
-   has no width breakpoints at all, so a phone never parses a line of it — the
-   mobile layout is untouched by construction, not by care.
+   DESKTOP (>= 900px) — "KITCHENBASE CONSOLE"
+   Everything below lives inside one width query, so the corridor phone is
+   untouched by construction, not by care.
 
-   The app is built for a corridor at 9pm: one thumb, one column, big targets.
-   On a desk that same column leaves two thirds of the screen empty and turns a
-   30-merchant site into a long scroll. Desktop keeps every interaction and
-   every component identical, and only spends the width it is given.
+   The brief was not "make the table denser". It was "make it look like a
+   high-end, professional web page". So the page gets real chrome: a dark
+   masthead that carries a lockup, a headline band, a row of figure cards that
+   straddle the band's lower edge, and content in raised white panels with their
+   own headers. The table stays the working surface — it is what a supervisor
+   actually reads — but it lives in a panel instead of floating on the ground.
    ========================================================================== */
+.ck-panel { display: contents; }
+
 @media (min-width: 900px) {
 
-  /* the column becomes a page */
-  .view { max-width: 1180px; padding: 0 24px 40px; }
+  /* ---------- 0 · TOKENS -------------------------------------------------- */
+  :root {
+    --hdr-h: 60px;
+    --band-h: 168px;
+    --gut: 20px;
+    --pad: 26px;
+    --panel-r: 16px;
+    --ground: #ECEAE5;          /* deeper than --paper so white panels lift */
+    --band: #121316;
+    --band-2: #1B1D21;
+    --chip: #F1EFEB;
+    --row-h: 56px;
+    --lift: 0 1px 2px rgba(23,24,26,.06), 0 10px 28px -12px rgba(23,24,26,.22);
+    --lift-2: 0 1px 2px rgba(23,24,26,.05), 0 2px 8px rgba(23,24,26,.05);
+  }
+  body { background: var(--ground); }
 
-  /* header spans the page and stops looking like a phone chrome bar */
+  /* ---------- 1 · PAGE ---------------------------------------------------- */
+  .view {
+    --main: 1180px;
+    --rail-w: 0px;
+    --rail-x: max(28px, calc((100% - var(--main)) / 2));
+    max-width: none; padding: 0 0 72px;
+    display: grid; align-content: start;
+    grid-template-columns:
+      [full-start] minmax(28px, 1fr)
+      [main-start] minmax(0, var(--main)) [main-end]
+      minmax(28px, 1fr) [full-end];
+  }
+  .view > * { grid-column: main; min-width: 0; }
+
+  /* bands paint edge to edge; their CONTENT stays locked to the main column */
+  .app-header, .demo-badge, #view-checklist > .progress-card, .login-hero {
+    grid-column: full;
+    padding-left: calc(var(--rail-x) + 0px);
+    padding-right: calc(var(--rail-x) + 0px);
+    border-radius: 0; border: 0;
+  }
+
+  #view-checklist { --main: 1180px; }
+  #view-review    { --main: 1080px; }
+  #view-billing   { --main: 1180px; }
+  #view-brands, #view-dinein { --main: 1000px; }
+  #view-capture   { --main: 620px; }
+  #view-addbrand  { --main: 620px; }
+  #view-login     { --main: 460px; }
+  .login-card { flex: none; }
+
+  /* ---------- 2 · MASTHEAD ------------------------------------------------ */
   .app-header {
-    margin: 0 -24px; padding-left: 40px; padding-right: 40px;
-    border-radius: 0;
+    position: sticky; top: 0; z-index: 30;
+    height: var(--hdr-h); min-height: var(--hdr-h);
+    display: flex; align-items: center; gap: 18px;
+    background: var(--band); color: #fff;
+    box-shadow: none; border-bottom: 1px solid rgba(255,255,255,.07);
   }
-  .header-center { text-align: left; padding-left: 8px; }
-  .header-site { font-size: 20px; }
+  .app-header .header-center {
+    flex: 1; display: flex; align-items: baseline; gap: 12px; text-align: left;
+  }
+  .app-header .header-site {
+    font-size: 15px; font-weight: 650; letter-spacing: -.01em; color: #fff;
+  }
+  .app-header .header-meta {
+    font-size: 12.5px; color: rgba(255,255,255,.52); letter-spacing: .01em;
+  }
+  .app-header .icon-btn {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: rgba(255,255,255,.07); color: rgba(255,255,255,.85);
+    border: 0; transition: background .15s ease;
+  }
+  .app-header .icon-btn:hover { background: rgba(255,255,255,.14); }
 
-  /* hero: ring + copy sit beside the round's headline instead of stacking */
-  .progress-card { margin: 20px 0 4px; padding: 20px 24px; }
-  .progress-ring, .progress-ring svg { width: 84px; height: 84px; }
+  .demo-badge {
+    background: var(--band); color: #FFE600;
+    font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+    padding-top: 0; padding-bottom: 10px; text-align: left;
+  }
 
-  .demo-badge { margin: 0 -24px; }
+  /* ---------- 3 · HEADLINE BAND ------------------------------------------ */
+  #view-checklist > .progress-card {
+    background: var(--band);
+    min-height: var(--band-h);
+    display: flex; align-items: flex-start; gap: 26px;
+    padding-top: 4px; padding-bottom: 84px;   /* cards straddle this space */
+    margin: 0; box-shadow: none;
+  }
+  #view-checklist > .progress-card .progress-ring { flex: none; width: 64px; height: 64px; }
+  #view-checklist > .progress-card .ring-bg { stroke: rgba(255,255,255,.16); }
+  #view-checklist > .progress-card .ring-fg { stroke: #FFE600; }
+  #view-checklist > .progress-card .ring-label b { color: #fff; font-size: 20px; }
+  #view-checklist > .progress-card .ring-label .rl-word {
+    color: rgba(255,255,255,.5); font-size: 9.5px; letter-spacing: .08em;
+  }
+  .progress-text { flex: 1; padding-top: 2px; }
+  .progress-text h2 {
+    font-size: 30px; font-weight: 700; letter-spacing: -.022em; color: #fff;
+    line-height: 1.14; margin-bottom: 7px;
+  }
+  .progress-text p {
+    font-size: 14px; color: rgba(255,255,255,.58); line-height: 1.5;
+  }
+  .progress-text p.prog-flag {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+    padding: 5px 12px; border-radius: 999px;
+    background: rgba(255,230,0,.13); color: #FFE600;
+    font-size: 12.5px; font-weight: 600; letter-spacing: .01em;
+  }
+  .hero-live {
+    align-self: flex-start; flex: none;
+    background: rgba(255,255,255,.09); color: rgba(255,255,255,.72);
+    border: 0; border-radius: 999px; padding: 5px 13px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .11em;
+  }
 
-  /* the lists: a phone scrolls, a desk scans. Three columns at 1180px, two
-     when the window is narrower — auto-fill keeps it fluid between. */
+  /* ---------- 4 · FIGURE CARDS (straddle the band) ----------------------- */
+  #ck-dash { display: block !important; margin-top: -68px; position: relative; z-index: 5; }
+  .kpi-row {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px;
+  }
+  .kpi {
+    background: #fff; border-radius: var(--panel-r); box-shadow: var(--lift);
+    padding: 18px 20px 17px; display: flex; flex-direction: column; gap: 3px;
+    border-top: 3px solid transparent;
+  }
+  .kpi-k {
+    font-size: 10.5px; font-weight: 650; letter-spacing: .085em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+  .kpi-v {
+    font-size: 27px; font-weight: 700; letter-spacing: -.025em; color: var(--ink);
+    font-variant-numeric: tabular-nums; line-height: 1.18;
+  }
+  .kpi-s { font-size: 12px; color: var(--ink-2); line-height: 1.4; }
+  .kpi.is-flag  { border-top-color: var(--amber); }
+  .kpi.is-flag  .kpi-v { color: var(--amber); }
+  .kpi.is-done  { border-top-color: var(--green); }
+  .kpi.is-done  .kpi-v { color: var(--green); }
+
+  /* ---------- 5 · BODY: TABLE + RAIL -------------------------------------
+     Explicit rows, because the rail must span every panel beside it and
+     auto-placement cannot express "start at the body and run to the bottom". */
+  #view-checklist {
+    grid-template-columns:
+      [full-start] minmax(28px, 1fr)
+      [main-start] minmax(0, calc(var(--main) - 340px))
+      [rail-start] 320px [main-end]
+      minmax(28px, 1fr) [full-end];
+    column-gap: 20px;
+  }
+  #view-checklist > * { grid-column: main-start / rail-start; }
+  #view-checklist > .app-header   { grid-column: full; grid-row: 1; }
+  #view-checklist > .demo-badge   { grid-column: full; grid-row: 2; }
+  #view-checklist > .progress-card{ grid-column: full; grid-row: 3; }
+  #view-checklist > #ck-dash      { grid-column: main-start / main-end; grid-row: 4; }
+  #view-checklist > #ck-side {
+    display: block !important;
+    grid-column: rail-start / main-end; grid-row: 5 / span 40;
+    align-self: start; margin-top: 22px;
+  }
+
+  /* ---------- 6 · PANELS -------------------------------------------------- */
+  .ck-panel, .panel {
+    display: block; background: #fff; border-radius: var(--panel-r);
+    box-shadow: var(--lift-2); overflow: hidden; margin-top: 22px;
+  }
+  .ck-panel:has(> .section-label.hidden) { display: none; }
+  .ck-panel:has(> .merchant-list:empty) { display: none; }
+
+  .section-label, .panel-h {
+    display: flex; align-items: center; gap: 9px;
+    margin: 0; padding: 17px var(--pad) 15px;
+    border-bottom: 1px solid var(--line);
+    font-size: 15.5px; font-weight: 650; letter-spacing: -.012em; color: var(--ink);
+    text-transform: none;
+  }
+  .section-label .ic { width: 17px; height: 17px; color: var(--ink-3); }
+  .panel-h h3 { font-size: 15.5px; font-weight: 650; letter-spacing: -.012em; }
+  .sec-hint, .panel-sub {
+    margin-left: auto; font-size: 12px; font-weight: 500;
+    color: var(--ink-3); letter-spacing: 0; text-transform: none;
+  }
+  .panel-b { padding: 16px var(--pad) 20px; }
+
+  /* ---------- 7 · THE TABLE ---------------------------------------------- */
   .merchant-list {
-    margin: 0; display: grid; gap: 12px;
-    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    display: block; gap: 0; margin: 0; background: none; border: 0;
   }
-  .section-label { margin: 26px 0 10px; }
+  .merchant-card, .list-head {
+    --tbl: 54px minmax(180px, 1fr) minmax(0, 150px) 148px 122px 16px;
+  }
+  .list-head {
+    display: grid !important; grid-template-columns: var(--tbl);
+    column-gap: var(--gut); align-items: center;
+    padding: 0 var(--pad); height: 34px;
+    background: #FBFAF8; border-bottom: 1px solid var(--line);
+    font-size: 10.5px; font-weight: 650; letter-spacing: .085em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+  .list-head span:nth-child(3) { text-align: right; }
+  .list-head span:nth-child(5) { text-align: right; }
 
-  /* hover is a desktop-only affordance; the phone has :active and keeps it */
-  .merchant-card { transition: border-color .12s, transform .12s; }
-  .merchant-card:hover { border-color: var(--line); transform: translateY(-1px); }
+  .merchant-card {
+    display: grid; grid-template-columns: var(--tbl);
+    column-gap: var(--gut); align-items: center;
+    min-height: var(--row-h); margin: 0; padding: 0 var(--pad);
+    background: none; border: 0; border-bottom: 1px solid var(--line);
+    border-radius: 0; box-shadow: none; opacity: 1;
+    transition: background .13s ease;
+  }
+  .merchant-list > .merchant-card:last-child { border-bottom: 0; }
+  .merchant-card:hover { background: #FAF9F6; cursor: pointer; }
 
-  /* login: four sites per row instead of two */
-  .site-grid { grid-template-columns: repeat(4, 1fr); }
-  .login-card { border-radius: 20px; margin-top: 8px; padding: 30px 32px 40px; }
-  .login-hero { padding-top: 40px; }
+  .m-kitchen {
+    width: 54px; height: 30px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--chip); color: var(--ink);
+    font: 650 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .02em; margin: 0;
+  }
+  .m-info { display: contents; }
+  .m-name {
+    font-size: 14.5px; font-weight: 600; letter-spacing: -.008em; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .m-tags { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: nowrap; }
+  .m-tags .tag {
+    font-size: 9.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 999px;
+    background: var(--chip); color: var(--ink-2); border: 0; white-space: nowrap;
+  }
 
-  /* review: the chip row has room to breathe, no horizontal scroll.
-     !important because the element carries an inline style — inline beats every
-     selector, and the first version of this rule silently did nothing. Scoped
-     inside the width query, so the phone's scrolling row is untouched. */
+  /* the right-hand figures block dissolves so status and money get real columns */
+  .merchant-card > div[style*="text-align:right"] { display: contents; }
+
+  /* status becomes a pill — the single biggest lift in perceived quality */
+  .m-status {
+    justify-self: start; display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 11px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; letter-spacing: .005em;
+    white-space: nowrap; margin: 0;
+  }
+  .m-status.done   { background: var(--green-bg); color: var(--green); }
+  .m-status.pending{ background: var(--chip);     color: var(--ink-2); }
+  .m-status.flag   { background: var(--blue-bg);  color: var(--blue); }
+  .m-status.flagred{ background: #FBE9EB;         color: var(--red); }
+  .m-status.done:has(.m-flag) { background: var(--amber-bg); color: var(--amber); }
+  .m-flag { font-style: normal; }
+
+  .m-total {
+    justify-self: end; text-align: right;
+    font-size: 14.5px; font-weight: 650; color: var(--ink);
+    font-variant-numeric: tabular-nums; letter-spacing: -.012em;
+  }
+  /* a row with no money element still needs its column to read as intentional */
+  .merchant-card:not(:has(.m-total)) .m-status::after {
+    content: ""; }
+  .merchant-card:not(:has(.m-total))::after {
+    content: "—"; grid-column: 5; justify-self: end;
+    color: var(--ink-3); font-variant-numeric: tabular-nums; font-size: 14px;
+  }
+  .rv-chev { color: var(--ink-3); width: 16px; height: 16px; }
+
+  /* flagged / unsaved rows keep a left signal without breaking the grid */
+  .merchant-card:has(.m-flag)      { box-shadow: inset 3px 0 0 var(--amber); }
+  .merchant-card:has(.m-status.flagred) { box-shadow: inset 3px 0 0 var(--red); }
+
+  /* ---------- 8 · SIDE PANEL --------------------------------------------- */
+  .panel { margin-top: 0; }
+  .panel + .panel { margin-top: 18px; }
+  .split-row {
+    display: grid; grid-template-columns: 1fr; gap: 7px;
+    padding: 13px 0; border-bottom: 1px solid var(--line);
+  }
+  .split-row:last-child { border-bottom: 0; }
+  .split-k {
+    font-size: 12.5px; font-weight: 600; color: var(--ink);
+  }
+  .split-bar {
+    display: block; height: 6px; border-radius: 999px; background: var(--chip);
+    overflow: hidden;
+  }
+  .split-bar i { display: block; height: 100%; background: var(--ink); border-radius: 999px; }
+  .ch-grab .split-bar i { background: #00B14F; }
+  .ch-fp   .split-bar i { background: #D70F64; }
+  .split-v {
+    display: flex; align-items: baseline; justify-content: space-between;
+    font-size: 13px; font-weight: 650; color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .split-v small { font-size: 11.5px; font-weight: 500; color: var(--ink-3); }
+  .rem-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 0; border-bottom: 1px solid var(--line);
+  }
+  .rem-row:last-child { border-bottom: 0; }
+  .rem-k {
+    flex: none; min-width: 42px; text-align: center;
+    padding: 3px 7px; border-radius: 7px; background: var(--chip);
+    font: 650 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-2);
+  }
+  .rem-n {
+    font-size: 12.5px; color: var(--ink); font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .dash-empty { font-size: 12.5px; color: var(--ink-3); line-height: 1.55; }
+  .bar-chart { display: none; }
+
+  /* ---------- 9 · OTHER VIEWS -------------------------------------------- */
+  #view-review .merchant-list, #view-billing .merchant-list,
+  #view-brands .merchant-list {
+    background: #fff; border-radius: var(--panel-r); box-shadow: var(--lift-2);
+    overflow: hidden; margin-top: 14px;
+  }
+  #view-review .list-head, #view-billing .list-head { display: grid !important; }
+  #view-capture .capture-body { max-width: 620px; margin: 0 auto; }
+  #view-capture .save-bar { max-width: 620px; }
+  .dinein-entry { border-radius: var(--panel-r); box-shadow: var(--lift-2); }
   #rv-dates { flex-wrap: wrap !important; overflow-x: visible !important; }
-
-  /* billing / dine-in are tables — let the figures use the width */
-  #view-billing .capture-body, #view-dinein .capture-body { padding-left: 0; padding-right: 0; }
-
-  /* capture stays a narrow single task: one screenshot, four numbers, one
-     confirm. Widening a form that people read top-to-bottom only adds travel. */
-  #view-capture .capture-body { max-width: 560px; margin: 0 auto; }
-  #view-capture .save-bar { max-width: 560px; }
 }
