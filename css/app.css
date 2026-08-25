@@ -210,6 +210,11 @@ body {
   margin: 10px 16px 0; padding: 8px 12px; border-radius: 10px;
   background: var(--amber-bg); color: var(--amber); font-size: 12px; font-weight: 700; text-align: center;
 }
+/* The badge text is split into <b>Preview</b><span>…</span> so the desktop can
+   set one small yellow chip against muted type. The phone must not notice:
+   inherit the weight and put the separator back. */
+.demo-badge b { font-weight: inherit; }
+.demo-badge b::after { content: " \00B7"; }
 
 /* ---------- Menu sheet ---------- */
 .overlay { position: fixed; inset: 0; background: rgba(15,16,18,.55); z-index: 60; display: flex; flex-direction: column; justify-content: flex-end; }
@@ -713,9 +718,16 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
   .app-header .icon-btn:hover { background: rgba(255,255,255,.14); }
 
   .demo-badge {
-    background: var(--band); color: #FFE600;
-    font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
-    padding-top: 0; padding-bottom: 10px; text-align: left;
+    background: var(--band); color: rgba(255,255,255,.5);
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none;
+    padding-top: 0; padding-bottom: 12px; text-align: left;
+  }
+  .demo-badge b::after { content: none; }
+  .demo-badge b {
+    flex: none; background: #FFE600; color: #17181A;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 10px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase;
   }
 
   /* ---------- 3 · HEADLINE BAND ------------------------------------------ */
@@ -726,7 +738,13 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
     padding-top: 4px; padding-bottom: 84px;   /* cards straddle this space */
     margin: 0; box-shadow: none;
   }
-  #view-checklist > .progress-card .progress-ring { flex: none; width: 64px; height: 64px; }
+  /* the base sheet hard-codes the svg at 72px; shrinking only the container
+     let the ring overflow it by 8px and read as clipped. Size both. */
+  #view-checklist > .progress-card .progress-ring,
+  #view-checklist > .progress-card .progress-ring svg { width: 68px; height: 68px; }
+  #view-checklist > .progress-card .progress-ring { flex: none; }
+  #view-checklist > .progress-card .ring-bg,
+  #view-checklist > .progress-card .ring-fg { stroke-width: 6; }
   #view-checklist > .progress-card .ring-bg { stroke: rgba(255,255,255,.16); }
   #view-checklist > .progress-card .ring-fg { stroke: #FFE600; }
   #view-checklist > .progress-card .ring-label b { color: #fff; font-size: 20px; }
@@ -866,10 +884,17 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
   }
   .m-tags { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: nowrap; }
   .m-tags .tag {
+    display: inline-flex; align-items: center; gap: 4px;
     font-size: 9.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase;
     padding: 3px 8px; border-radius: 999px;
     background: var(--chip); color: var(--ink-2); border: 0; white-space: nowrap;
   }
+  /* a tag that carries meaning keeps its own colour — the neutral chip above is
+     only the default for attribute tags like 24 HR */
+  .m-tags .tag.h24      { background: var(--blue-bg);  color: var(--blue); }
+  .m-tags .tag.amend    { background: var(--amber-bg); color: var(--amber); }
+  .m-tags .tag.flagwarn { background: #FDE8E8;         color: var(--red); }
+  .m-tags .tag .ic { width: 11px; height: 11px; }
 
   /* the right-hand figures block dissolves so status and money get real columns */
   .merchant-card > div[style*="text-align:right"] { display: contents; }
@@ -947,7 +972,62 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
   .dash-empty { font-size: 12.5px; color: var(--ink-3); line-height: 1.55; }
   .bar-chart { display: none; }
 
-  /* ---------- 9 · OTHER VIEWS -------------------------------------------- */
+  /* ---------- 9 · REVIEW -------------------------------------------------
+     Review's row is not the checklist's row. It carries who saved it and why it
+     was flagged, and its "70 orders" is a COUNT, not a status — rendering it as
+     a green pill said "this row is fine" in the one view whose job is to show
+     what is not. So the info cell re-forms (name over meta) instead of
+     dissolving, and the count goes back to being a figure. */
+  #view-review .merchant-card, #view-review .list-head {
+    --tbl: 54px minmax(220px, 1fr) 108px 130px 18px;
+  }
+  #view-review .merchant-card { min-height: 62px; padding: 11px var(--pad); }
+  #view-review .m-info {
+    display: flex; flex-direction: column; align-items: flex-start;
+    gap: 5px; min-width: 0; text-align: left;
+  }
+  #view-review .m-name { max-width: 100%; }
+  #view-review .m-tags {
+    justify-content: flex-start; flex-wrap: wrap; gap: 6px; row-gap: 5px;
+  }
+  #view-review .customer-meta {
+    margin: 0; font-size: 11.5px; font-weight: 500; color: var(--ink-3);
+  }
+  #view-review .m-status.done {
+    background: none; color: var(--ink-2); padding: 0;
+    justify-self: end; font-size: 13px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  #view-review .list-head span:nth-child(3),
+  #view-review .list-head span:nth-child(4) { text-align: right; }
+
+  /* Review's controls were sitting bare on the ground while the checklist put
+     everything in panels — the same page in two different design languages.
+     The date strip becomes a panel of its own, CSS only, no markup moved. */
+  #view-review .capture-body { padding: 0; }
+  #view-review #rv-dates {
+    flex-wrap: wrap !important; overflow-x: visible !important;
+    gap: 8px; padding: 18px var(--pad) 0 !important; margin: 0;
+  }
+  #view-review .rv-pick {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px var(--pad) 18px; margin: 0;
+    font-size: 12.5px; font-weight: 600; color: var(--ink-2);
+  }
+  #view-review .rv-pick .search-input {
+    width: auto; min-width: 172px; margin: 0;
+    border-radius: 10px; border: 1px solid var(--line);
+    padding: 8px 11px; font-size: 13px; background: #fff;
+  }
+  /* the strip and the picker read as one control surface */
+  #view-review #rv-dates,
+  #view-review .rv-pick { background: #fff; }
+  #view-review #rv-dates  { border-radius: var(--panel-r) var(--panel-r) 0 0; }
+  #view-review .rv-pick   { border-radius: 0 0 var(--panel-r) var(--panel-r);
+                            box-shadow: var(--lift-2); }
+  #view-review .chip-row .chip { border-radius: 999px; }
+
+  /* ---------- 10 · OTHER VIEWS ------------------------------------------- */
   #view-review .merchant-list, #view-billing .merchant-list,
   #view-brands .merchant-list {
     background: #fff; border-radius: var(--panel-r); box-shadow: var(--lift-2);

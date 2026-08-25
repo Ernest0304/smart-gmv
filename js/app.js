@@ -1387,7 +1387,9 @@ function renderReview() {
           <span class="m-status flag">＋ add record</span></div>`).join('')
     : '';
 
-  const RV_HEAD = '<div class="list-head" style="display:none"><span>Kitchen</span><span>Brand</span><span>Saved by</span><span>Orders</span><span>GMV</span><span></span></div>';
+  /* five cells, matching review's five-track row: the "saved by" line now sits
+     under the brand rather than in its own column */
+  const RV_HEAD = '<div class="list-head" style="display:none"><span>Kitchen</span><span>Brand</span><span>Orders</span><span>GMV</span><span></span></div>';
   const rvBody = cards + baseCards + ghostCards;
   $('rv-list').innerHTML = (rvBody ? RV_HEAD + rvBody : (rv.offset
       ? '<p class="ab-note" style="margin-top:14px">No records saved for this day.</p>'
@@ -2844,7 +2846,10 @@ $('ab-create').onclick = async () => {
   if (hl) hl.textContent = CONFIG.demo ? 'PREVIEW' : 'LIVE';
   const b = $('mode-badge');
   if (CONFIG.demo) {
-    b.textContent = 'PREVIEW · invented data, nothing is saved anywhere — the live app is untouched';
+    /* The word PREVIEW carries the warning; the sentence explains it. Splitting
+       them lets the desktop set one small yellow chip against muted text
+       instead of a 1440px yellow shout — yellow stays a signal, not a field. */
+    b.innerHTML = '<b>Preview</b><span>invented data, nothing is saved anywhere — the live app is untouched</span>';
   } else {
     /* The hero's yellow LIVE badge carries the mode now — the old green strip
        said the same thing again and broke the black hero in two (Ernest, 10 Aug). */
