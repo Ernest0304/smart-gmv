@@ -1037,6 +1037,77 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
                             box-shadow: var(--lift-2); }
   #view-review .chip-row .chip { border-radius: 999px; }
 
+  /* ---------- 9b · BILLING ----------------------------------------------
+     Billing's row puts THREE elements in the right-hand block — order count,
+     billable GMV, and the per-platform split — so dissolving that block spills
+     the split into the 16px chevron track. It needs six real columns, and the
+     header already promises six. */
+  #view-billing .merchant-card, #view-billing .list-head {
+    --tbl: 54px minmax(170px, 1fr) 118px 96px 128px 242px;
+  }
+  #view-billing .merchant-card { cursor: default; }
+  #view-billing .merchant-card:hover { background: none; }
+  #view-billing .list-head span:nth-child(3),
+  #view-billing .list-head span:nth-child(4),
+  #view-billing .list-head span:nth-child(5),
+  #view-billing .list-head span:nth-child(6) { text-align: right; }
+  #view-billing .bl-days {
+    justify-self: end; padding: 3px 9px; border-radius: 999px;
+    background: var(--chip); color: var(--ink-2);
+    font-size: 10.5px; font-weight: 650; letter-spacing: .02em; white-space: nowrap;
+  }
+  #view-billing .bl-orders {
+    justify-self: end; font-size: 13px; font-weight: 600; color: var(--ink-2);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  /* the split is one nowrap string; if its column is narrower than the string,
+     justify-self:end makes it bleed LEFT over the GMV column instead of
+     clipping — measured at 222px against a 196px track. The track leads. */
+  #view-billing .bl-mini {
+    justify-self: end; text-align: right; margin: 0;
+    font-size: 11px; color: var(--ink-3); white-space: nowrap;
+    font-variant-numeric: tabular-nums; letter-spacing: -.005em;
+  }
+  /* the site-total block is a figure card, not the checklist's headline band */
+  #view-billing .progress-card, #view-dinein .progress-card {
+    background: var(--band); color: #fff;
+    border-radius: var(--panel-r); padding: 20px var(--pad);
+    margin: 0 0 4px; box-shadow: var(--lift);
+  }
+  #view-billing .bl-big, #view-dinein .bl-big {
+    font-size: 26px; font-weight: 700; letter-spacing: -.022em;
+    font-variant-numeric: tabular-nums; margin: 4px 0 6px;
+  }
+  #view-billing .bl-cap, #view-dinein .bl-cap {
+    font-size: 10.5px; font-weight: 650; letter-spacing: .085em;
+    text-transform: uppercase; color: rgba(255,255,255,.5);
+  }
+  #view-billing .progress-card .bl-mini,
+  #view-dinein .progress-card .bl-mini {
+    color: rgba(255,255,255,.6); font-size: 12.5px; justify-self: auto; text-align: left;
+  }
+  #view-billing #bl-search {
+    max-width: 340px; border-radius: 10px; border: 1px solid var(--line);
+    padding: 9px 12px; font-size: 13px;
+  }
+
+  /* ---------- 9c · MANAGE BRANDS ----------------------------------------
+     These are cards, not table rows, so the table rules never reached them —
+     which left one column of 968px-wide cards, the exact defect the desktop
+     pass existed to remove. */
+  #mb-list {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px; align-items: start;
+  }
+  #mb-list .mb-card {
+    margin: 0; border-radius: var(--panel-r);
+    box-shadow: var(--lift-2); border: 0; height: 100%;
+  }
+  #view-brands .search-input, #view-addbrand .search-input {
+    max-width: 340px; border-radius: 10px; border: 1px solid var(--line);
+    padding: 9px 12px; font-size: 13px;
+  }
+
   /* ---------- 10 · OTHER VIEWS ------------------------------------------- */
   #view-review .merchant-list, #view-billing .merchant-list,
   #view-brands .merchant-list {
