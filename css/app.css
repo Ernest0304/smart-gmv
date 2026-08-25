@@ -699,7 +699,11 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
     height: var(--hdr-h); min-height: var(--hdr-h);
     display: flex; align-items: center; gap: 18px;
     background: var(--band); color: #fff;
-    box-shadow: none; border-bottom: 1px solid rgba(255,255,255,.07);
+    /* No hairline. The masthead, the preview strip and the headline band are one
+       continuous dark field, and a rule drawn inside a single field is noise —
+       it made whatever sat under it look pinned to the edge. When the masthead
+       is scrolled over the off-white body, the colour change is the boundary. */
+    box-shadow: none; border-bottom: 0;
   }
   .app-header .header-center {
     flex: 1; display: flex; align-items: baseline; gap: 12px; text-align: left;
@@ -721,7 +725,7 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
     background: var(--band); color: rgba(255,255,255,.5);
     display: flex; align-items: center; gap: 10px;
     font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none;
-    padding-top: 0; padding-bottom: 12px; text-align: left;
+    padding-top: 14px; padding-bottom: 4px; text-align: left;
   }
   .demo-badge b::after { content: none; }
   .demo-badge b {
@@ -735,7 +739,7 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
     background: var(--band);
     min-height: var(--band-h);
     display: flex; align-items: flex-start; gap: 26px;
-    padding-top: 4px; padding-bottom: 84px;   /* cards straddle this space */
+    padding-top: 26px; padding-bottom: 84px;  /* cards straddle the lower space */
     margin: 0; box-shadow: none;
   }
   /* the base sheet hard-codes the svg at 72px; shrinking only the container
@@ -807,14 +811,20 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
       minmax(28px, 1fr) [full-end];
     column-gap: 20px;
   }
+  /* Columns are pinned; ROWS ARE NOT. An earlier version numbered these rows
+     explicitly, which quietly made the whole layout depend on the preview strip
+     existing: in production that strip is display:none, row 2's main column
+     freed up, and the first panel auto-placed itself ABOVE the headline band.
+     Demo mode could never show it. Auto-placement plus a span on the rail gets
+     the same result and cannot be broken by an element that isn't there. */
   #view-checklist > * { grid-column: main-start / rail-start; }
-  #view-checklist > .app-header   { grid-column: full; grid-row: 1; }
-  #view-checklist > .demo-badge   { grid-column: full; grid-row: 2; }
-  #view-checklist > .progress-card{ grid-column: full; grid-row: 3; }
-  #view-checklist > #ck-dash      { grid-column: main-start / main-end; grid-row: 4; }
+  #view-checklist > .app-header   { grid-column: full; }
+  #view-checklist > .demo-badge   { grid-column: full; }
+  #view-checklist > .progress-card{ grid-column: full; }
+  #view-checklist > #ck-dash      { grid-column: main-start / main-end; }
   #view-checklist > #ck-side {
     display: block !important;
-    grid-column: rail-start / main-end; grid-row: 5 / span 40;
+    grid-column: rail-start / main-end; grid-row: span 40;
     align-self: start; margin-top: 22px;
   }
 
