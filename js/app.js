@@ -821,6 +821,10 @@ async function hydrateTodayInner() {
     const r = await api(`/api/records/today?site=${state.site.id}&date=${state.salesDate}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const { records } = await r.json();
+    try {   // pending tenant amendments for this facility — never blocks the round
+      const ra = await api(`/api/amendments?site=${state.site.id}`);
+      state.amendments = ra.ok ? ((await ra.json()).amendments || []) : [];
+    } catch (e) { state.amendments = []; }
     records.forEach((sr) => {
       const m = state.merchants.find((x) => x.kitchen === sr.kitchen && x.brand === sr.brand);
       if (!m) return;
@@ -971,6 +975,23 @@ function renderChecklist() {
   }
 
   // S12's dine-in arrives once a month as one sheet — its own entry, above the round
+  /* Tenant amendment requests (portal): a card above the round, one tap to the
+     inbox. Fetched beside today's records in hydrateTodayInner. */
+  const amWrap = $('amend-entry');
+  if (amWrap) {
+    const pend = state.amendments || [];
+    amWrap.classList.toggle('hidden', pend.length === 0);
+    if (pend.length) {
+      const first = pend[0];
+      $('amend-entry-title').textContent = pend.length === 1
+        ? `${first.brand} submitted an amendment request`
+        : `${pend.length} amendment requests waiting`;
+      $('amend-entry-sub').textContent = pend.length === 1
+        ? `${first.kitchen} · ${first.salesDate} · ${CH_META[first.channel] ? CH_META[first.channel].name : first.channel} · tap to review`
+        : pend.slice(0, 3).map((a) => a.brand).join(', ') + (pend.length > 3 ? '…' : '') + ' · tap to review';
+      amWrap.onclick = openInbox;
+    }
+  }
   const diWrap = $('dinein-entry');
   if (diWrap) {
     const show12 = state.site.id === 'S12';
@@ -1421,6 +1442,114 @@ const CH_META = {
 
 function findMerchant(mid) { return state.merchants.find((x) => x.id === mid); }
 
+/* ---------- Tenant amendment inbox (portal, 1 Sep) ----------
+   A licensee sent a new photo for a day already recorded. Staff open it in the
+   SAME capture screen: the request's photo and AI reading are overlaid on that
+   day's saved record for ONE channel, staff correct the reading like any fresh
+   capture, then Approve (server overlays that channel on the row and saves it
+   through the normal edit path) or Reject with a reason. Backing out restores
+   the saved figures so the day's history never shows an unapproved overlay. */
+const normKitchen = (k) => (String(k || '').toUpperCase() === 'CLOUDRETAIL' ? 'CR' : String(k || ''));
+function daysBetween(a, b) {   // a, b 'YYYY-MM-DD' -> a − b in days
+  const p = (s) => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+  return Math.round((p(a) - p(b)) / 86400000);
+}
+function openInbox() {
+  const list = state.amendments || [];
+  $('inbox-sub').textContent = `${state.site.name} · ${list.length} waiting`;
+  $('inbox-list').innerHTML = list.length ? list.map((a) => `
+    <button class="inbox-card" data-id="${esc(a.id)}">
+      <div class="ib-top"><b>${esc(a.brand)}</b><span class="ib-k">${esc(normKitchen(a.kitchen))}</span></div>
+      <div class="ib-mid">${esc(a.salesDate)} · ${esc(CH_META[a.channel] ? CH_META[a.channel].name : a.channel)}
+        · AI read ${a.aiOrders === '' || a.aiOrders == null ? '—' : esc(String(a.aiOrders)) + ' orders'}${a.aiGmv === '' || a.aiGmv == null ? '' : ' · ' + money(Number(a.aiGmv))}
+        ${a.aiConfidence ? `<span class="tag ${a.aiConfidence === 'high' ? 'h24' : 'amend'}">${esc(a.aiConfidence)}</span>` : ''}</div>
+      <div class="ib-sub">from ${esc(a.tenantEmail || a.account || 'licensee')} · ${esc(a.submittedAt || '')}</div>
+    </button>`).join('') : '<p class="ab-note">Nothing waiting.</p>';
+  $('inbox-list').querySelectorAll('.inbox-card').forEach((b) => {
+    b.onclick = () => openAmendment(list.find((a) => a.id === b.dataset.id));
+  });
+  show('view-inbox');
+}
+$('btn-inbox-back').onclick = () => backToChecklist();
+
+async function openAmendment(a) {
+  if (!a) return;
+  const m = state.merchants.find((x) => normKitchen(x.kitchen) === normKitchen(a.kitchen) && x.brand === a.brand);
+  if (!m) { toast('That brand is not in this site\'s list — refresh and try again'); return; }
+  const offset = daysBetween(state.salesDate, a.salesDate);
+  if (offset < 0) { toast('That request is for a future date — check the phone\'s date'); return; }
+  if (offset > 0 && !(state.history[offset] && state.history[offset]._loaded)) {
+    toast('Loading that day…');
+    await loadDay(offset);
+  }
+  const rec = recordsFor(offset)[m.id];
+  if (!rec || !rec.saved) { toast(`No saved record for ${a.brand} on ${a.salesDate}`); return; }
+  const ch = a.channel;
+  rec._amendPrev = { ch, before: rec.channels[ch] ? JSON.parse(JSON.stringify(rec.channels[ch])) : null };
+  rec.channels[ch] = {
+    ...(rec.channels[ch] || {}),
+    aiOrders: numOrU(a.aiOrders), aiGmv: numOrU(a.aiGmv),
+    finalOrders: numOrU(a.aiOrders), finalGmv: numOrU(a.aiGmv),
+    conf: a.aiConfidence || undefined, screen: '',
+    photoLink: a.photoLink || undefined, photoId: a.photoId || photoIdOf(a.photoLink),
+    editedOrders: false, editedGmv: false, marks: [], extras: (rec.channels[ch] || {}).extras || [],
+    noSales: false, zero: false,
+  };
+  rec.expanded = { ...(rec.expanded || {}), [ch]: true };
+  openCapture(m.id, 'evening', offset, 'inbox');
+  state.current.amend = a;      // openCapture resets state.current; the button needs the request
+  updateSaveBtn();
+  toast(`Licensee photo for ${CH_META[ch] ? CH_META[ch].name : ch} — check the reading, then approve or reject`);
+}
+function restoreAmendOverlay() {
+  const cur = state.current; if (!cur || !cur.amend) return;
+  const rec = recordsFor(cur.offset)[cur.m.id];
+  if (rec && rec._amendPrev) {
+    if (rec._amendPrev.before) rec.channels[rec._amendPrev.ch] = rec._amendPrev.before;
+    else delete rec.channels[rec._amendPrev.ch];
+    delete rec._amendPrev;
+  }
+}
+async function decideAmend(decision, extra) {
+  const cur = state.current; const a = cur.amend; if (!a || cur.deciding) return;
+  cur.deciding = true; updateSaveBtn();
+  try {
+    const r = await api(`/api/amendments/${encodeURIComponent(a.id)}/decide`, {
+      method: 'POST', body: JSON.stringify({ decision, staffName: state.staff.name, staffId: state.staff.id, ...extra }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    state.amendments = (state.amendments || []).filter((x) => x.id !== a.id);
+    if (cur.offset > 0 && state.history[cur.offset]) delete state.history[cur.offset]._loaded;   // re-read the day next time
+    const rec = recordsFor(cur.offset)[cur.m.id];
+    if (decision === 'approve') { if (rec) { delete rec._amendPrev; rec.auditEdited = true; rec.billingFlag = (d.save || {}).billing || rec.billingFlag; } }
+    else restoreAmendOverlay();
+    toast(decision === 'approve' ? `${a.brand} — ${a.salesDate} overwritten ✓ (audit logged)` : `${a.brand} — request rejected`);
+    cur.deciding = false; cur.amend = null;
+    if ((state.amendments || []).length) openInbox(); else backToChecklist();
+  } catch (e) {
+    cur.deciding = false; updateSaveBtn();
+    toast(`❗ Not applied — ${e.message}`);
+  }
+}
+function approveAmend() {
+  const cur = state.current; const a = cur.amend; if (!a) return;
+  const v = ((recordsFor(cur.offset)[cur.m.id] || {}).channels || {})[a.channel] || {};
+  if (v.finalOrders == null || v.finalGmv == null) { toast('Confirm the reading first'); return; }
+  askConfirm(`Approve and overwrite ${a.salesDate}?`,
+    `${a.brand} · ${CH_META[a.channel] ? CH_META[a.channel].name : a.channel} becomes ${v.finalOrders} orders · ${money(Number(v.finalGmv))}. The previous figures and photo stay in the audit log.`,
+    'Approve', () => decideAmend('approve', {
+      finalOrders: v.finalOrders, finalGmv: v.finalGmv,
+      edited: !!(v.editedOrders || v.editedGmv || (v.marks || []).length),
+      conf: v.conf ?? null, screen: (v.screen || '').slice(0, 400) }));
+}
+function rejectAmend() {
+  const a = state.current && state.current.amend; if (!a) return;
+  const reason = window.prompt(`Reject ${a.brand}'s request for ${a.salesDate}?\nReason (the licensee will see this):`, '');
+  if (reason === null) return;
+  decideAmend('reject', { reason: reason.trim().slice(0, 300) });
+}
+$('btn-reject').onclick = rejectAmend;
+
 function openCapture(mid, mode, offset = 0, from = 'checklist') {
   const m = findMerchant(mid);
   state.current = { m, mode, offset, from };
@@ -1444,6 +1573,7 @@ function openCapture(mid, mode, offset = 0, from = 'checklist') {
   show('view-capture');
 }
 $('btn-capture-back').onclick = () => {
+  if (state.current && state.current.from === 'inbox') { restoreAmendOverlay(); openInbox(); return; }
   if (state.current && state.current.from === 'review') { renderReview(); show('view-review'); }
   else { backToChecklist(); }
 };
@@ -2216,6 +2346,17 @@ function updateSaveBtn() {
   updateCapRing();
   const { m, mode, offset } = state.current;
   const btn = $('btn-save');
+  const rj = $('btn-reject');
+  if (rj) rj.classList.toggle('hidden', !(state.current.from === 'inbox'));
+  if (state.current.from === 'inbox') {
+    const a = state.current.amend || {};
+    const v = ((recordsFor(offset)[m.id] || {}).channels || {})[a.channel] || {};
+    const ready = v.finalOrders !== undefined && v.finalOrders !== null && v.finalGmv !== undefined && v.finalGmv !== null;
+    btn.disabled = !ready || !!state.current.deciding;
+    btn.textContent = state.current.deciding ? '⬆ Applying…'
+      : ready ? `Approve — overwrite ${a.salesDate}` : 'Confirm the reading to approve';
+    return;
+  }
   if (mode === 'baseline') {
     const meta = state.baselineMeta[m.id] || {};
     const bs = meta.status || 'Operated';
@@ -2537,6 +2678,7 @@ async function saveBaseline(mid) {
 
 $('btn-save').onclick = () => {
   const { m, mode, offset, from } = state.current;
+  if (from === 'inbox') { approveAmend(); return; }
   if (mode === 'baseline') {
     const meta = state.baselineMeta[m.id] || {};
     const bs = meta.status || 'Operated';
@@ -2893,6 +3035,7 @@ function closeTopLayer() {
     }
   }
   if (!$('view-capture').classList.contains('hidden')) { $('btn-capture-back').click(); return true; }
+  if (!$('view-inbox').classList.contains('hidden')) { backToChecklist(); return true; }
   if (!$('view-review').classList.contains('hidden')) { $('btn-review-back').click(); return true; }
   if (!$('view-billing').classList.contains('hidden')) { $('btn-billing-back').click(); return true; }
   if (!$('view-brands').classList.contains('hidden')) { $('btn-brands-back').click(); return true; }

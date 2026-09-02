@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#000000">
 <title>Smart GMV</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260901a">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260901a">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260902a">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=20260902a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -15,14 +15,14 @@
 <!-- ?v= pairs the HTML with matching assets — bump it on EVERY deploy, or a
      browser holding a cached copy mixes old JS with new HTML and dies silently
      (Ernest's Chrome, 30 Jul). -->
-<link rel="stylesheet" href="css/app.css?v=20260901a">
+<link rel="stylesheet" href="css/app.css?v=20260902a">
 </head>
 <body>
 
 <!-- ============ LOGIN VIEW ============ -->
 <div class="view" id="view-login">
   <div class="login-hero">
-    <div class="login-logo"><img src="icons/icon-192.png?v=20260901a" alt="" style="width:100%;height:100%;border-radius:inherit;display:block"></div>
+    <div class="login-logo"><img src="icons/icon-192.png?v=20260902a" alt="" style="width:100%;height:100%;border-radius:inherit;display:block"></div>
     <h1>Smart GMV</h1>
     <p class="login-sub">Daily sales capture · Smart City Kitchens</p>
   </div>
@@ -103,6 +103,12 @@
   <div class="ck-dash" id="ck-dash" style="display:none"></div>
   <aside class="ck-side" id="ck-side" style="display:none"></aside>
 
+  <button class="dinein-entry amend hidden" id="amend-entry">
+    <svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v12H7l-3 3z"/><path d="M12 8v4M12 14v.2"/></svg>
+    <span><b id="amend-entry-title">Amendment requests</b><small id="amend-entry-sub">A licensee sent a new photo for review</small></span>
+    <svg class="ic rv-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6l6 6-6 6"/></svg>
+  </button>
+
   <button class="dinein-entry hidden" id="dinein-entry">
     <svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>
     <span><b>Monthly dine-in</b><small>One sheet covers every brand for the month</small></span>
@@ -174,6 +180,21 @@
 </div>
 
 <!-- ============ CAPTURE VIEW ============ -->
+<div class="view hidden" id="view-inbox">
+  <header class="app-header">
+    <button class="icon-btn" id="btn-inbox-back" aria-label="Back"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg></button>
+    <div class="header-center">
+      <div class="header-site">Amendment requests</div>
+      <div class="header-meta" id="inbox-sub"></div>
+    </div>
+    <span class="header-spacer"></span>
+  </header>
+  <div class="capture-body">
+    <p class="ab-note" id="inbox-note">A licensee sent a new photo for a day you already recorded. Open one to see the photo and the AI reading, correct it if needed, then approve or reject.</p>
+    <div id="inbox-list"></div>
+  </div>
+</div>
+
 <div class="view hidden" id="view-capture">
   <header class="app-header">
     <button class="icon-btn" id="btn-capture-back" aria-label="Back"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg></button>
@@ -199,6 +220,7 @@
     <div id="baseline-banner" class="baseline-banner hidden"></div>
     <div id="channel-cards"></div>
     <div class="save-bar">
+      <button class="btn-reject hidden" id="btn-reject">Reject request</button>
       <button class="btn-primary" id="btn-save" disabled>Confirm &amp; save</button>
     </div>
   </div>
@@ -360,8 +382,8 @@
 
 <!-- Catalog, roster and customers load live from /api/catalog at boot —
      no merchant or staff data ships with this public repo. -->
-<script src="js/config.js?v=20260901a"></script>
-<script src="js/demo.js?v=20260901a"></script>
-<script src="js/app.js?v=20260901a"></script>
+<script src="js/config.js?v=20260902a"></script>
+<script src="js/demo.js?v=20260902a"></script>
+<script src="js/app.js?v=20260902a"></script>
 </body>
 </html>

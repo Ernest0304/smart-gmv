@@ -641,6 +641,24 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
    own headers. The table stays the working surface — it is what a supervisor
    actually reads — but it lives in a panel instead of floating on the ground.
    ========================================================================== */
+/* ---------- Tenant amendment inbox ---------- */
+.dinein-entry.amend { border-left: 4px solid var(--amber); }
+.dinein-entry.amend .ic:first-child { color: var(--amber); }
+.inbox-card {
+  display: block; width: 100%; text-align: left; margin: 0 0 10px; padding: 14px;
+  background: var(--card); border: 0.5px solid var(--line); border-radius: var(--radius);
+  font: inherit; color: var(--ink); cursor: pointer;
+}
+.ib-top { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.ib-k { font-size: 12px; font-weight: 700; color: var(--ink-2); background: #F4F3F0; padding: 2px 8px; border-radius: 8px; }
+.ib-mid { margin-top: 6px; font-size: 13px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ib-sub { margin-top: 6px; font-size: 12px; color: var(--ink-3); }
+.btn-reject {
+  width: 100%; margin-bottom: 8px; padding: 12px; border-radius: 999px;
+  border: 1.5px solid var(--red); background: var(--card); color: var(--red);
+  font: inherit; font-weight: 700; cursor: pointer;
+}
+
 .ck-panel { display: contents; }
 
 @media (min-width: 900px) {
@@ -691,6 +709,7 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
   #view-capture   { --main: 620px; }
   #view-addbrand  { --main: 620px; }
   #view-login     { --main: 460px; }
+  #view-inbox     { --main: 760px; }
   .login-card { flex: none; }
 
   /* ---------- 2 · MASTHEAD ------------------------------------------------ */
