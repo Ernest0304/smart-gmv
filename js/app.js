@@ -57,15 +57,19 @@ function photoUrl(id) {
 async function loadCatalog() {
   $('site-grid').innerHTML = '<p class="ab-note"><span class="spinner sm"></span> Loading sites…</p>';
   try {
+    /* Before login the server hands back only the site list (with counts) and
+       the staff picker; the merchant book and contract terms come once a
+       session exists, so this runs twice — at boot, and again from enterApp. */
     const r = CONFIG.demo ? await DEMO.fetch('/api/catalog')
-      : await fetch(`${CONFIG.apiBase}/api/catalog`);
+      : await fetch(`${CONFIG.apiBase}/api/catalog`,
+          state.token ? { headers: { Authorization: `Bearer ${state.token}` } } : {});
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const raw = await r.json();
     DATA = {
       sites: raw.sites,
       staff: raw.staff,
-      customers: raw.customers,
-      merchants: raw.merchants.map((m) => ({
+      customers: raw.customers || [],
+      merchants: (raw.merchants || []).map((m) => ({
         site: m.facility, kitchen: m.kitchen, brand: m.brand, sfdcId: m.sfdcId,
         overnight: m.overnight || undefined, disabled: m.disabled || undefined,
         grabOn: m.grabOn !== false, fpOn: m.fpOn !== false,
@@ -410,8 +414,8 @@ function renderSites() {
   renderResume();
   $('site-grid').innerHTML = DATA.sites.map((s) => {
     const n = s.id === CATERING_SITE
-      ? DATA.merchants.filter((m) => m.catering && !m.disabled).length
-      : DATA.merchants.filter((m) => m.site === s.id).length;
+      ? (DATA.merchants.length ? DATA.merchants.filter((m) => m.catering && !m.disabled).length : (s.merchantCount || 0))
+      : (DATA.merchants.length ? DATA.merchants.filter((m) => m.site === s.id).length : (s.merchantCount || 0));
     return `<button class="site-btn" data-site="${esc(s.id)}">${esc(s.name)}<small>${esc(s.id)} · ${n} merchants</small></button>`;
   }).join('');
   $('site-grid').querySelectorAll('.site-btn').forEach((b) => b.onclick = () => {
@@ -746,8 +750,12 @@ async function verifyPin() {
 document.querySelectorAll('.back-link').forEach((b) => b.onclick = () => loginStep(b.dataset.back));
 
 /* ---------- checklist ---------- */
-function enterApp() {
+async function enterApp() {
   rememberUser();     // single funnel for PIN verify, PIN claim and registration
+  if (!DATA.merchants.length && !CONFIG.demo) {
+    try { await loadCatalog(); }             // merchant book needs the session
+    catch (e) { toast('Could not load the merchant list — pull to retry'); }
+  }
   state.merchants = siteMerchants(state.site.id);
   state.records = {};
   state.baselines = {};
