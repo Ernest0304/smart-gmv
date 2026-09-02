@@ -771,6 +771,7 @@ async function enterApp() {
   renderChecklist();
   show('view-checklist');
   hydrateToday();
+  liveStart();
 }
 
 const numOrU = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v));
@@ -803,32 +804,55 @@ function serverRecToLocal(sr) {
    second device) sees ✓ instead of re-capturing — re-captures would still be
    in-place updates (deterministic ids), but staff shouldn't redo the round. */
 let hydrateSeq = 0;
-async function hydrateToday() {
+async function hydrateToday(live = false) {
   const seq = ++hydrateSeq;   // logout/login during a slow fetch must not clear the new session's notice
-  state.hydrating = true;
-  try { await hydrateTodayInner(); }
+  if (!live) state.hydrating = true;          // a live refresh never flips the list into "checking…"
+  try { await hydrateTodayInner(live); }
   finally {
-    if (seq === hydrateSeq) {
+    if (seq === hydrateSeq && !live) {
       state.hydrating = false;
       if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
     }
   }
 }
-async function hydrateTodayInner() {
+/* Live round (field feedback 3 Sep): a merchant THIS phone is working on is
+   never overwritten by what another phone saved — the checklist only fills in
+   cards this phone has not touched (or already saved itself). */
+function localBusy(m, baseline) {
+  if (state.current && state.current.m && state.current.m.id === m.id
+      && !$('view-capture').classList.contains('hidden')) return true;
+  if (baseline) {
+    const bm = state.baselineMeta[m.id] || {};
+    return !!(bm.inFlight || bm.error || (!bm.saved && baselineHasShots(m)));
+  }
+  const r = state.records[m.id];
+  return !!(r && (r.inFlight || r.saveError || r.draft || (!r.saved && recHasChannelData(r))));
+}
+async function hydrateTodayInner(live = false) {
   // the catering entry is not a daily per-site round — nothing to rehydrate
   if (state.site && state.site.id === CATERING_SITE) return;
+  const seq = hydrateSeq;
   try {
     const r = await api(`/api/records/today?site=${state.site.id}&date=${state.salesDate}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const { records } = await r.json();
+    const { records, version } = await r.json();
+    if (seq !== hydrateSeq) return;            // logged out or switched site while the read was in flight
+    if (version !== undefined) liveVer = version;
     try {   // pending tenant amendments for this facility — never blocks the round
       const ra = await api(`/api/amendments?site=${state.site.id}`);
       state.amendments = ra.ok ? ((await ra.json()).amendments || []) : [];
     } catch (e) { state.amendments = []; }
+    const arrived = [];
     records.forEach((sr) => {
       const m = state.merchants.find((x) => x.kitchen === sr.kitchen && x.brand === sr.brand);
       if (!m) return;
-      if (sr.recordType === 'baseline') {
+      const baseline = sr.recordType === 'baseline';
+      if (live) {
+        if (localBusy(m, baseline)) return;
+        const had = baseline ? !!(state.baselineMeta[m.id] || {}).saved : merchantDone(m);
+        if (!had) arrived.push({ m, who: (sr.staff || '').replace(/\s*\([^)]*\)$/, '') });
+      }
+      if (baseline) {
         state.baselineMeta[m.id] = { recordId: sr.recordId, saved: true,
           savedAt: sr.timestamp || '',
           status: sr.status || 'Operated', savedStatus: sr.status || 'Operated' };
@@ -842,12 +866,42 @@ async function hydrateTodayInner() {
       }
     });
     renderChecklist();
+    if (live && arrived.length) {
+      const who = [...new Set(arrived.map((a) => a.who).filter((w) => w && w !== state.staff.name))];
+      toast(`↻ ${arrived.map((a) => a.m.kitchen).join(', ')} recorded${who.length ? ' by ' + who.join(', ') : ''}`);
+    }
   } catch (e) {
+    if (live) return;                           // a missed refresh is nothing to shout about — next poll
     state.hydrateError = e.message;
     renderChecklist();
     toast(`⚠ Could not check the server for today's saved records (${e.message})`);
   }
 }
+/* The poll itself: the facility's save counter is an integer the server keeps
+   in memory (no sheet read). Every 20 s while this phone sits on the checklist
+   and the tab is visible; the day is reloaded only when the number moved. Any
+   other view — capture, review, billing — pauses it, so a photo upload or an
+   AI read never competes with it. Other facilities are not watched at all;
+   entering one hydrates it as before. */
+const LIVE_MS = 20000;
+let liveVer = null, liveTimer = null, liveBusy = false;
+function noteVersion(resp) { if (resp && typeof resp.version === 'number') liveVer = resp.version; }
+async function liveTick() {
+  if (CONFIG.demo || !state.staff || !state.site || state.site.id === CATERING_SITE) return;
+  if (document.hidden || $('view-checklist').classList.contains('hidden') || state.hydrating || liveBusy) return;
+  liveBusy = true;
+  try {
+    const r = await api(`/api/records/version?site=${state.site.id}`);
+    if (!r.ok) return;
+    const { version } = await r.json();
+    if (liveVer === null) liveVer = version;
+    else if (version !== liveVer) { liveVer = version; await hydrateToday(true); }
+  } catch (e) { /* offline for a moment — next tick */ }
+  finally { liveBusy = false; }
+}
+function liveStart() { liveStop(); liveTimer = setInterval(liveTick, LIVE_MS); }
+function liveStop() { if (liveTimer) clearInterval(liveTimer); liveTimer = null; liveVer = null; }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) liveTick(); });
 function merchantDone(m) {
   const r = state.records[m.id];
   if (!r || !r.saved) return false;
@@ -873,6 +927,7 @@ function unsavedRecords() {
   return list;
 }
 function renderChecklist() {
+  renderAutoNext();
   /* Disabled brands are hidden from capture but stay in state.merchants,
      so Review (history) and Manage brands still see them. */
   const all = state.merchants.filter((m) => !m.disabled);
@@ -1075,6 +1130,7 @@ function renderChecklist() {
 }
 $('btn-logout').onclick = () => attemptLogout();
 function logout() {
+  liveStop();
   setSession('');
   state.staff = null;   // else beforeunload guards a session the user discarded
   state.pin = '';
@@ -2499,6 +2555,51 @@ function backToChecklist() {          // the one way back to tonight's round
   show('view-checklist');
 }
 
+/* Auto-next after save (field feedback 3 Sep). Save used to mean: back to the
+   list, find the next card, tap. Now Save opens the next kitchen still waiting,
+   in list order and wrapping round; the list is one tap away (back). A
+   per-device switch on the checklist, default on — some nights brands close
+   late and staff record out of order. Only the nightly round and the morning
+   opening round: Review edits, inbox approvals and catering return to where
+   they came from, as before. */
+const AUTONEXT_KEY = 'smartgmv.autonext';
+function autoNextOn() { try { return localStorage.getItem(AUTONEXT_KEY) !== 'off'; } catch (e) { return true; } }
+function renderAutoNext() {
+  const b = $('autonext-toggle');
+  const on = autoNextOn();
+  b.classList.toggle('on', on);
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  b.querySelector('span').textContent = on ? 'Auto-next after save' : 'Auto-next after save · off';
+}
+$('autonext-toggle').onclick = () => {
+  try { localStorage.setItem(AUTONEXT_KEY, autoNextOn() ? 'off' : 'on'); } catch (e) {}
+  renderAutoNext();
+};
+function nextWaiting(mid, mode) {
+  const list = state.merchants.filter((m) => !m.disabled && (mode !== 'baseline' || m.overnight));
+  const i = list.findIndex((m) => m.id === mid);
+  const waiting = (m) => {
+    if (mode === 'baseline') {
+      const bm = state.baselineMeta[m.id] || {};
+      return !(bm.saved || bm.inFlight || bm.error || baselineHasShots(m));
+    }
+    const r = state.records[m.id];
+    return !(merchantDone(m) || (r && (r.inFlight || r.draft || r.saveError)));
+  };
+  for (let k = 1; k <= list.length; k++) {           // the ones after it first, then wrap
+    const m = list[(i + k) % list.length];
+    if (m.id !== mid && waiting(m)) return m;
+  }
+  return null;
+}
+function afterSaveGo(mid, mode, said, alwaysSay = false) {
+  renderChecklist();
+  const nxt = autoNextOn() ? nextWaiting(mid, mode) : null;
+  if (!nxt) { if (alwaysSay && said) toast(said); show('view-checklist'); return; }
+  openCapture(nxt.id, mode);
+  if (said) toast(`${said} · next: ${nxt.kitchen} ${nxt.brand}`);
+}
+
 async function postRecord(payload, path = '/api/records') {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 90000);
@@ -2534,6 +2635,7 @@ async function saveRecord(mid) {
       const bflag = resp && (typeof resp.billing === 'string' ? resp.billing : resp.billing && resp.billing.flag);
       if (bflag) rec.billingFlag = bflag;
       adoptLinks(rec, resp || {});
+      noteVersion(resp);
       if (rec.status !== 'Operated') rec.channels = {};
       if (resp && resp.billing === 'NO_BASELINE') {
         toast(`${m.brand} saved — ⚠ no opening GMV this morning · flagged for supervisor`);
@@ -2619,7 +2721,7 @@ async function saveBaseline(mid) {
   // away — the morning card shows ⬆ saving… and flips ✓/❗ when the server answers.
   const onBaselineView = !$('view-capture').classList.contains('hidden')
     && state.current && state.current.mode === 'baseline' && state.current.m.id === m.id;
-  if (onBaselineView) { backToChecklist(); }
+  if (onBaselineView) afterSaveGo(m.id, 'baseline', `Saving ${m.brand} opening`);
   else if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
 
   const finish = (err, resp) => {
@@ -2631,6 +2733,7 @@ async function saveBaseline(mid) {
       meta.saved = true; meta.error = null;
       meta.savedAt = nowStamp();
       meta.savedStatus = bs;
+      noteVersion(resp);
       if (bs !== 'Operated') {
         // any shots on the phone are superseded by the status save
         coreFor(m).forEach((ch) => { delete state.baselines[`${mid}:${ch}`]; });
@@ -2717,9 +2820,7 @@ $('btn-save').onclick = () => {
   if (!coreReady() && photosCaptured()) {
     // Snap & go: photos in, reads still running — park as draft and move on.
     rec.draft = true;
-    toast(`${m.brand} parked ⏳ — confirm when readings are ready`);
-    renderChecklist();
-    show('view-checklist');
+    afterSaveGo(m.id, 'evening', `${m.brand} parked ⏳ — confirm when readings are ready`, true);
     return;
   }
   if (!coreReady()) return;
@@ -2727,8 +2828,7 @@ $('btn-save').onclick = () => {
   const doSave = () => {
     saveRecord(m.id);
     if (noPhoto.length) toast(`Saving — flagged: no photo for ${noPhoto.map((c) => CH_META[c].name).join(', ')}`);
-    renderChecklist();
-    show('view-checklist');
+    afterSaveGo(m.id, 'evening', noPhoto.length ? '' : `Saving ${m.brand}`);
   };
   if (rec.status !== 'Operated' && recHasChannelData(rec)) {
     askConfirm(`Save as “${rec.status}”?`,

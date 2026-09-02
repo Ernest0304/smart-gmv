@@ -104,6 +104,14 @@ body {
 .ring-label b { font-size: 17px; color: var(--ink); }
 .progress-text h2 { font-size: 17px; font-weight: 800; }
 .progress-text p { font-size: 13.5px; color: var(--ink-2); margin-top: 3px; }
+/* auto-next switch (3 Sep): part of the black hero, not a badge on it —
+   grey text + dark track when off, white text + yellow track when on. */
+.pref-toggle { margin-top: 11px; display: inline-flex; align-items: center; gap: 10px; border: 0; background: none; padding: 0; font: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: .01em; color: var(--kb-muted-d, #9BA0A8); cursor: pointer; min-height: 28px; -webkit-tap-highlight-color: transparent; }
+.pref-toggle i { width: 30px; height: 17px; border-radius: 999px; background: rgba(255,255,255,.18); position: relative; flex: none; transition: background .15s; }
+.pref-toggle i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: left .15s, background .15s; }
+.pref-toggle.on { color: var(--kb-bright, #fff); }
+.pref-toggle.on i { background: var(--kb-yellow, #FFE600); }
+.pref-toggle.on i::after { left: 15px; background: #111; }
 
 .section-label { margin: 20px 16px 8px; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-2); }
 .sec-hint { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--ink-3); }
