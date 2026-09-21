@@ -454,6 +454,25 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
 .bl-range { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
 .bl-range .search-input { flex: 1; min-width: 0; }
 .bl-arrow { color: var(--ink-2); }
+/* a billing row's platform split: a two-line ledger, one line per platform —
+   icon | count | amount, the figures right-aligned in their own columns so the
+   digits stack. Two lines of 11px sit inside the 56px desktop row; on every
+   width it replaces a side-by-side string that had to wrap or clip somewhere. */
+#view-billing .merchant-card .bl-mini {
+  display: grid; grid-template-columns: 15px auto auto; column-gap: 6px; row-gap: 2px;
+  align-items: center; justify-content: end;
+}
+#view-billing .merchant-card .bl-ch { display: contents; }
+.bl-ch img, .bl-su-k img { width: 15px; height: 15px; flex: none; border-radius: 3.5px;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.18); }        /* Grab's own tile is near-white with a green wordmark: 15px and an edge, or it fades on a white card */
+#view-billing .merchant-card .bl-q,
+#view-billing .merchant-card .bl-a { justify-self: end; white-space: nowrap; }
+#view-billing .merchant-card .bl-a { padding-left: 8px; }
+/* display:contents drops the unit's own box, and its opacity with it */
+#view-billing .merchant-card .bl-ch.is-zero > * { opacity: .45; }
+/* the Salesforce source note under the Add-brand search: a caption, not a banner */
+.src-note { margin: 10px 0 0; text-align: center; text-wrap: balance; font-size: 11px;
+  font-weight: 600; line-height: 1.55; color: var(--ink-3); opacity: .9; }
 
 /* ---------- "continue as" resume cards on the site step ---------- */
 .staff-btn.resume { width: 100%; text-align: left; margin-bottom: 8px; }
@@ -1070,7 +1089,7 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
      the split into the 16px chevron track. It needs six real columns, and the
      header already promises six. */
   #view-billing .merchant-card, #view-billing .list-head {
-    --tbl: 54px minmax(170px, 1fr) 118px 96px 128px 242px;
+    --tbl: 54px minmax(0, 1fr) 118px 96px 128px 200px;   /* the split is a two-line ledger now: 200px clears the ceiling row (5-digit orders, 7-figure amounts) */
   }
   #view-billing .merchant-card { cursor: default; }
   #view-billing .merchant-card:hover { background: none; }
@@ -1101,17 +1120,21 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
     border-radius: var(--panel-r); padding: 20px var(--pad);
     margin: 0 0 4px; box-shadow: var(--lift);
   }
+  /* The card went dark here but .bl-big kept the base sheet's own ink
+     (#1F2126): 1.15:1 on --band, the headline figure all but invisible
+     (measured 21 Sep). A colour on the container does not reach a child
+     that sets its own. */
   #view-billing .bl-big, #view-dinein .bl-big {
     font-size: 26px; font-weight: 700; letter-spacing: -.022em;
-    font-variant-numeric: tabular-nums; margin: 4px 0 6px;
+    font-variant-numeric: tabular-nums; margin: 4px 0 6px; color: #fff;
   }
   #view-billing .bl-cap, #view-dinein .bl-cap {
     font-size: 10.5px; font-weight: 650; letter-spacing: .085em;
-    text-transform: uppercase; color: rgba(255,255,255,.5);
+    text-transform: uppercase; color: rgba(255,255,255,.68);   /* 8.9:1, was 5.3 */
   }
   #view-billing .progress-card .bl-mini,
   #view-dinein .progress-card .bl-mini {
-    color: rgba(255,255,255,.6); font-size: 12.5px; justify-self: auto; text-align: left;
+    color: rgba(255,255,255,.82); font-size: 12.5px; justify-self: auto; text-align: left;   /* 12.6:1, was 7.2 */
   }
   #view-billing #bl-search {
     max-width: 340px; border-radius: 10px; border: 1px solid var(--line);
@@ -1146,4 +1169,99 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
   #view-capture .save-bar { max-width: 620px; }
   .dinein-entry { border-radius: var(--panel-r); box-shadow: var(--lift-2); }
   #rv-dates { flex-wrap: wrap !important; overflow-x: visible !important; }
+}
+
+/* ---------- Monthly billing rows below 1080px --------------------------------
+   The row was kitchen | name | a right column holding orders, total and the
+   platform split. On a phone the split never wrapped, so the right column took
+   the width and the name column collapsed (0-49px at 390px, measured 21 Sep):
+   brand names vanished and the day count ran under the split. The desktop
+   table failed from the other side — its fixed tracks pushed the split column
+   out of the card below 1063px (39px clipped on an iPad, 163px at 900). Below
+   1080px the same markup is laid out as a statement line instead: who on the
+   left, the money on the right, the platform split as a footer under a
+   hairline, flush right under the total it breaks down. At 1080px and up the
+   table has room. Ported from Smart GMV HK (21 Sep).
+   Last in the file on purpose: in 900-1079 it sits on top of the desktop
+   block's generic row rules and has to win the ties. */
+@media (max-width: 1079.98px) {
+  #view-billing .list-head { display: none !important; }
+  #view-billing .merchant-card {
+    display: grid; grid-template-columns: 46px minmax(0, 1fr) auto;
+    grid-template-areas: "kit name total" "kit meta orders" "split split split";
+    column-gap: 12px; row-gap: 3px; align-items: center;
+    min-height: 0; padding-top: 12px; padding-bottom: 12px;
+  }
+  #view-billing .merchant-card:active { border-color: transparent; }   /* not tappable */
+  #view-billing .m-info,
+  #view-billing .merchant-card > div[style*="text-align:right"] { display: contents; }
+  #view-billing .m-kitchen { grid-area: kit; }
+  /* a billing line is identified by its brand: let a long name take a second
+     line rather than end in an ellipsis (SG names run long — 'Fish Your Youth
+     Rice & Noodles'); the money column keeps to the top line beside it */
+  #view-billing .m-name { grid-area: name; white-space: normal; overflow: visible;
+    text-overflow: clip; overflow-wrap: anywhere; line-height: 1.25; }
+  #view-billing .m-tags { grid-area: meta; margin-top: 0; justify-content: flex-start; }
+  #view-billing .bl-days {
+    justify-self: start; padding: 2px 8px; border-radius: 999px; background: #F1EFEB;
+    color: var(--ink-2); font-size: 10.5px; font-weight: 650; white-space: nowrap;
+  }
+  #view-billing .m-total {
+    grid-area: total; justify-self: end; align-self: start; white-space: nowrap;
+    font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  #view-billing .bl-orders {
+    grid-area: orders; justify-self: end; white-space: nowrap;
+    font-size: 12px; font-weight: 600; color: var(--ink-2);
+  }
+  #view-billing .merchant-card .bl-mini {
+    grid-area: split; justify-self: stretch; text-align: left; letter-spacing: normal;
+    grid-template-columns: 15px auto auto; justify-content: end; row-gap: 4px;
+    margin: 7px 0 0; padding-top: 8px; border-top: 1px solid var(--line);
+    font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ---------- Monthly billing: the site total's breakdown ----------------------
+   Grab, foodpanda and the hand-typed channels as three units, each marked the
+   same way as the rows below it. One line on the dark desktop card; on a phone,
+   where the old single line wrapped mid-unit, a three-row table under a
+   hairline — source on the left, orders and amount right-aligned. */
+.bl-split { display: flex; flex-wrap: wrap; align-items: center; column-gap: 18px; row-gap: 4px; }
+.bl-su { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.bl-su .bl-a::before { content: "· "; }                       /* inline: count · amount */
+.bl-su-k { display: inline-flex; align-items: center; gap: 5px; }
+.bl-man { width: 15px; height: 15px; flex: none; display: inline-flex; align-items: center;
+  justify-content: center; border-radius: 3.5px; background: #E7E5E0; color: var(--ink-2); }
+.bl-man .ic { width: 10px; height: 10px; }
+.bl-su.is-zero { opacity: .45; }
+@media (min-width: 900px) {
+  #view-billing .progress-card .bl-man { background: rgba(255,255,255,.2); color: #fff; }
+}
+@media (max-width: 899.98px) {
+  /* a table: source | count | amount, both figures right-aligned */
+  #view-billing .progress-card .bl-split {
+    display: grid; grid-template-columns: auto 1fr auto; column-gap: 12px; row-gap: 7px;
+    margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
+    font-size: 12.5px;
+  }
+  #view-billing .progress-card .bl-su { display: contents; }
+  #view-billing .progress-card .bl-su-k { color: var(--ink); font-weight: 600; }
+  #view-billing .progress-card .bl-su .bl-q,
+  #view-billing .progress-card .bl-su .bl-a {
+    justify-self: end; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  #view-billing .progress-card .bl-su .bl-a::before { content: none; }   /* columns, no dot */
+  /* the filter sat 16px wider than the cards on each side — the total card and
+     the list are inset inside .capture-body, the input was not. Same edges now,
+     and a little slimmer; the type stays 16px, below which iOS zooms the page
+     when the field takes focus. */
+  #view-billing #bl-search { width: calc(100% - 32px); margin-left: 16px; margin-right: 16px; padding: 11px 14px; }
+  /* display:contents drops the unit's own box, and its opacity with it */
+  #view-billing .progress-card .bl-su.is-zero > * { opacity: .45; }
+}
+@media (max-width: 400px) {
+  /* a 360px phone leaves the table 263px: two 7-figure platforms with 5-digit
+     order counts measured 281px and ran past the card edge */
+  #view-billing .progress-card .bl-split { column-gap: 8px; font-size: 12px; letter-spacing: -.01em; }
 }

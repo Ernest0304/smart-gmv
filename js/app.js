@@ -617,7 +617,12 @@ function setPinBusy(b) {
   if (b) {
     el.innerHTML = '<span class="spinner sm"></span> Checking…';
     el.classList.remove('hidden');
-  } else if (el.textContent.includes('Checking')) {
+  } else if (el.querySelector('.spinner')) {
+    // Hide only while the spinner is still what's showing. On a failed save
+    // paintPinTitle() repaints this line with the create-PIN instructions
+    // BEFORE the finally-block lands here, and those must stay.
+    // Structure, not wording: the old test read the text for 'Checking', which
+    // any reworded or translated label would silently break.
     el.classList.add('hidden');
   }
 }
@@ -1488,8 +1493,8 @@ function renderReview() {
 const CH_META = {
   /* wm: official vendor wordmark (SVG in icons/, colours baked in) shown in
      the channel-card header instead of the letter block */
-  grab:     { name: 'GrabFood',  cls: 'grab',   logo: 'G', hint: 'Net sales + Completed', wm: 'icons/grab-wordmark.svg' },
-  fp:       { name: 'foodpanda', cls: 'fp',     logo: 'f', hint: 'All − Cancelled', wm: 'icons/foodpanda-wordmark.svg' },
+  grab:     { name: 'GrabFood',  cls: 'grab',   logo: 'G', hint: 'Net sales + Completed', wm: 'icons/grab-wordmark.svg', icon: 'icons/grab-icon.png' },
+  fp:       { name: 'foodpanda', cls: 'fp',     logo: 'f', hint: 'All − Cancelled', wm: 'icons/foodpanda-wordmark.svg', icon: 'icons/foodpanda-icon.png' },
   others:   { name: 'Others',    cls: 'other',  logo: 'O', hint: 'AIGENS / other platforms' },
   catering: { name: 'Catering',  cls: 'cater',  logo: 'C', hint: 'Catering orders' },
   dinein:   { name: 'Dine-in',   cls: 'dinein', logo: 'D', hint: 'POS screenshot' },
@@ -3238,13 +3243,30 @@ function renderBilling(d) {
     m.brand.toLowerCase().includes(q) || m.kitchen.toLowerCase().includes(q)) : d.merchants;
   const t = d.totals;
   const manual = (m) => m.othersGmv + m.cateringGmv + m.dineinGmv + m.promoDineinGmv;
+  /* Counts carry a unit and a thousands separator — a bare 1104 beside an
+     amount did not say 1,104 orders. */
+  const qty = (n) => `<span class="bl-q">${Number(n).toLocaleString()} <span class="bl-u">${n === 1 ? 'order' : 'orders'}</span></span>`;
+  /* One platform's share of a row: the app's own icon (a bare G / F read as a
+     code), the count, the amount — separate elements laid out as a small
+     ledger. A platform with nothing that month is dimmed so the eye lands on
+     the one that sold. */
+  const blCh = (ch, orders, gmv) =>
+    `<span class="bl-ch${!orders && !gmv ? ' is-zero' : ''}"><img src="${CH_META[ch].icon}" alt="${CH_META[ch].name}"> ${qty(orders)} <span class="bl-a">${money(gmv)}</span></span>`;
+  /* The site total's breakdown, one unit per source. A unit never breaks
+     inside itself — on a phone the old single line wrapped between a platform
+     and its own amount. Hand-typed channels (others, catering, dine-in) share
+     one unit, marked with a hand. */
+  const blUnit = (mark, name, orders, gmv) =>
+    `<span class="bl-su${!orders && !gmv ? ' is-zero' : ''}"><span class="bl-su-k">${mark}<span>${name}</span></span> ${qty(orders)} <span class="bl-a">${money(gmv)}</span></span>`;
+  const handOrders = t.othersOrders + t.cateringOrders + t.dineinOrders + t.promoDineinOrders;
+  const handGmv = t.othersGmv + t.cateringGmv + t.dineinGmv + t.promoDineinGmv;
   const rows = shown.map((m) => `<div class="merchant-card" style="cursor:default">
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
         <div class="m-tags"><span class="bl-days">${m.days} day${m.days > 1 ? 's' : ''} recorded</span></div></div>
-      <div style="text-align:right"><div class="bl-orders">${m.totalOrders} order${m.totalOrders === 1 ? '' : 's'}</div>
+      <div style="text-align:right"><div class="bl-orders">${m.totalOrders.toLocaleString()} order${m.totalOrders === 1 ? '' : 's'}</div>
         <div class="m-total">${money(m.totalGmv)}</div>
-        <div class="bl-mini">G ${m.billableGrabOrders} · ${money(m.billableGrabGmv)}&nbsp;&nbsp;F ${m.billableFpOrders} · ${money(m.billableFpGmv)}</div></div>
+        <div class="bl-mini">${blCh('grab', m.billableGrabOrders, m.billableGrabGmv)}${blCh('fp', m.billableFpOrders, m.billableFpGmv)}</div></div>
     </div>`).join('');
   const flags = d.flags.length
     ? `<div class="section-label" style="margin-top:22px">${ic('alert')} Needs review <span class="sec-hint">${d.flags.length} record${d.flags.length > 1 ? 's' : ''} — clear these before invoicing</span></div>
@@ -3254,7 +3276,7 @@ function renderBilling(d) {
     <div class="progress-card" style="display:block">
       <span class="bl-cap">Site total · ${esc(label)} · billable</span>
       <div class="bl-big">${t.totalOrders.toLocaleString()} orders · ${money(t.totalGmv)}</div>
-      <div class="bl-mini">Grab ${t.billableGrabOrders.toLocaleString()} · ${money(t.billableGrabGmv)}&nbsp;&nbsp;foodpanda ${t.billableFpOrders.toLocaleString()} · ${money(t.billableFpGmv)}&nbsp;&nbsp;manual ${(t.othersOrders + t.cateringOrders + t.dineinOrders + t.promoDineinOrders).toLocaleString()} · ${money(t.othersGmv + t.cateringGmv + t.dineinGmv + t.promoDineinGmv)}</div>
+      <div class="bl-mini bl-split">${blUnit(`<img src="${CH_META.grab.icon}" alt="">`, 'Grab', t.billableGrabOrders, t.billableGrabGmv)} ${blUnit(`<img src="${CH_META.fp.icon}" alt="">`, 'foodpanda', t.billableFpOrders, t.billableFpGmv)} ${blUnit(`<i class="bl-man">${ic('hand')}</i>`, 'Manual', handOrders, handGmv)}</div>
     </div>
     <input class="search-input" id="bl-search" placeholder="Filter merchants…" value="${esc(bl.q)}" style="margin-top:14px">
     <div class="merchant-list" style="margin-top:10px"><div class="list-head" style="display:none"><span>Kitchen</span><span>Brand</span><span>Days</span><span>Orders</span><span>Billable GMV</span><span>Grab · foodpanda</span></div>${rows}</div>
