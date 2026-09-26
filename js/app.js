@@ -3034,10 +3034,16 @@ $('btn-save').onclick = () => {
     doAmend();
     return;
   }
+  // Opened from Review's "Today" chip: the edit returns to Review like any other
+  // Review edit, never auto-next into tonight's round (review 25 Sep, #15).
+  const goOn = (said, alwaysSay) => {
+    if (from === 'review') { renderReview(); show('view-review'); if (said) toast(said); }
+    else afterSaveGo(m.id, 'evening', said, alwaysSay);
+  };
   if (!coreReady() && photosCaptured()) {
     // Snap & go: photos in, reads still running — park as draft and move on.
     rec.draft = true;
-    afterSaveGo(m.id, 'evening', `${m.brand} parked ⏳ — confirm when readings are ready`, true);
+    goOn(`${m.brand} parked ⏳ — confirm when readings are ready`, true);
     return;
   }
   if (!coreReady()) return;
@@ -3045,7 +3051,7 @@ $('btn-save').onclick = () => {
   const doSave = () => {
     saveRecord(m.id);
     if (noPhoto.length) toast(`Saving — flagged: no photo for ${noPhoto.map((c) => CH_META[c].name).join(', ')}`);
-    afterSaveGo(m.id, 'evening', noPhoto.length ? '' : `Saving ${m.brand}`);
+    goOn(noPhoto.length ? '' : `Saving ${m.brand}`);
   };
   if (rec.status !== 'Operated' && recHasChannelData(rec)) {
     askConfirm(`Save as “${rec.status}”?`,
