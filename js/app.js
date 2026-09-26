@@ -3753,7 +3753,9 @@ async function saveDinein() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         site: state.site.id, siteName: state.site.name,
-        salesDate: di.read.salesDate, monthLabel: di.read.monthLabel,
+        // the server caps monthLabel at 20 characters: a long heading read off the
+        // sheet made every save of that upload fail (422)
+        salesDate: di.read.salesDate, monthLabel: String(di.read.monthLabel || '').slice(0, 20),
         confirmedAt: nowStamp(), staffName: state.staff.name, staffId: state.staff.id || '',
         photo: di.photo,
         rows: di.rows.map((x) => ({ kitchen: x.kitchen, brand: x.matchedBrand, sfdcId: x.sfdcId,
