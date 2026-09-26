@@ -1638,7 +1638,7 @@ function renderReview() {
     const m = findMerchant(mid);
     if (!m) return '';
     const chParts = Object.entries(sr.channels)
-      .map(([ch, c]) => `${CH_META[ch].name} ${c.orders || 0} · ${money(Number(c.gmv || 0))}`).join(' · ');
+      .map(([ch, c]) => `${chName(ch)} ${c.orders || 0} · ${money(Number(c.gmv || 0))}`).join(' · ');
     const parts = [sr.status, chParts].filter(Boolean).join(' — ');
     return `<div class="merchant-card rv-base"><div class="m-kitchen">${ic('sun')}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)} — opening GMV</div>
@@ -1685,6 +1685,9 @@ const CH_META = {
   dinein:   { name: 'Dine-in',   cls: 'dinein', logo: 'D', hint: 'POS screenshot' },
   promodinein: { name: '(Promo) Dine-in', cls: 'dinein', logo: 'P', hint: 'POS screenshot' },
 };
+/* A channel key the server knows and this build does not (a platform added
+   later) must not crash a render or a confirm sheet (review 25 Sep, #13). */
+const chName = (ch) => (CH_META[ch] || { name: ch }).name;
 
 function findMerchant(mid) { return state.merchants.find((x) => x.id === mid); }
 
@@ -1745,7 +1748,7 @@ async function openAmendment(a) {
   openCapture(m.id, 'evening', offset, 'inbox');
   state.current.amend = a;      // openCapture resets state.current; the button needs the request
   updateSaveBtn();
-  toast(`Licensee photo for ${CH_META[ch] ? CH_META[ch].name : ch} — check the reading, then approve or reject`);
+  toast(`Licensee photo for ${chName(ch)} — check the reading, then approve or reject`);
 }
 function restoreAmendOverlay() {
   const cur = state.current; if (!cur || !cur.amend) return;
@@ -2537,7 +2540,7 @@ function extrasBlockers(rec) {
   const out = [];
   Object.entries(rec.channels || {}).forEach(([ch, v]) => {
     const n = (v.extras || []).filter((e) => e.pendingAI || e.invalid || !(Number(e.gmv) > 0)).length;
-    if (n) out.push(`${CH_META[ch].name}: ${n} pending order${n > 1 ? 's need amounts' : ' needs an amount'}`);
+    if (n) out.push(`${chName(ch)}: ${n} pending order${n > 1 ? 's need amounts' : ' needs an amount'}`);
   });
   return out;
 }
@@ -2687,7 +2690,7 @@ function channelSummaryText(rec) {
     .filter(([, v]) => channelHasData(v) || (v.extras || []).length)
     .map(([ch, v]) => {
       const x = extrasTotals(v);
-      return `${CH_META[ch].name} ${Number(v.finalOrders || 0) + x.n} · ${money(Number(v.finalGmv || 0) + x.gmv)}`;
+      return `${chName(ch)} ${Number(v.finalOrders || 0) + x.n} · ${money(Number(v.finalGmv || 0) + x.gmv)}`;
     }).join(', ');
 }
 
