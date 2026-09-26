@@ -242,14 +242,25 @@ function dayLabel(offset) {
 }
 
 /* ---------- merchant helpers ---------- */
+/* A merchant's id is site + kitchen + brand, never its position in a filtered
+   list: toggling a brand into the Catering entry rebuilt the list, every later
+   id shifted, and a saved record showed as not captured — while failed saves
+   dropped out of the logout guard (review 25 Sep, #9). Brand, not SFDC id:
+   several brands in one kitchen share one Opportunity. */
+function merchantId(m) {
+  const slug = (m.brand.toLowerCase().replace(/[^a-z0-9]/g, '') || 'x').slice(0, 16);
+  return `${m.site}-${m.kitchen}-${slug}-${djb2(m.brand).toString(36).slice(0, 4)}`;
+}
 function siteMerchants(siteId) {
+  const seen = {};
   return DATA.merchants
     .filter((m) => (siteId === CATERING_SITE ? m.catering : m.site === siteId))
-    .map((m, i) => ({
-      ...m,
-      id: `${m.site}-${m.kitchen}-${i}`,
-      channels: channelsFor(siteId),
-    }))
+    .map((m) => {
+      let id = merchantId(m);
+      seen[id] = (seen[id] || 0) + 1;
+      if (seen[id] > 1) id += `~${seen[id]}`;   // the same brand twice in one kitchen: keep both addressable
+      return { ...m, id, channels: channelsFor(siteId) };
+    })
     .sort((a, b) => (a.kitchen === 'CR') - (b.kitchen === 'CR') || a.kitchen.localeCompare(b.kitchen, undefined, { numeric: true }));
 }
 const CATERING_SITE = 'CATERING';   // pseudo-facility: catering has its own entry
