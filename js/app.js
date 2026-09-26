@@ -154,7 +154,7 @@ const state = {
   site: null, staff: null, pin: '',
   pinMode: 'verify',                // verify | create | confirm (first-login PIN claim)
   pinFirst: '',                     // first entry while confirming a new PIN
-  salesDate: null,                  // business date, frozen at login (before 06:00 = yesterday)
+  salesDate: null,                  // business date (before 06:00 = yesterday); re-checked by ensureBusinessDate()
   merchants: [],                    // merchants of the selected site
   records: {},                      // merchantId -> record (today)
   history: {},                      // dayOffset -> { merchantId -> record } (past days, editable)
@@ -187,6 +187,10 @@ function businessDate() {
   // Before 06:00 a round still belongs to yesterday (post-midnight closings).
   const d = new Date(Date.now() - 6 * 3600 * 1000);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function bizDayLabel(ymd) {                 // "Thu, 25 Sept" — the header shows the BUSINESS day
+  const [y, mo, d] = ymd.split('-').map(Number);
+  return new Date(y, mo - 1, d).toLocaleDateString('en-SG', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 function nowStamp() {
   const d = new Date(); const p = (n) => String(n).padStart(2, '0');
@@ -830,7 +834,7 @@ async function enterApp() {
   state.hydrateError = null;
   state.salesDate = businessDate();
   $('hdr-site').textContent = `${state.site.name} · ${state.site.id}`;
-  $('hdr-date').textContent = new Date().toLocaleDateString('en-SG', { weekday: 'short', day: 'numeric', month: 'short' });
+  $('hdr-date').textContent = bizDayLabel(state.salesDate);
   $('hdr-staff').textContent = state.staff.name;
   renderChecklist();
   show('view-checklist');
@@ -948,12 +952,54 @@ async function hydrateTodayInner(live = false) {
    other view — capture, review, billing — pauses it, so a photo upload or an
    AI read never competes with it. Other facilities are not watched at all;
    entering one hydrates it as before. */
+/* The business day turns at 06:00. It used to be computed once, at login, so a
+   phone left logged in overnight filed the 10 am opening GMV on yesterday — and
+   tonight's closing then found no opening for today (review 25 Sep, #4).
+   Checked when the tab comes back, on every live tick and whenever a card is
+   opened; a baseline for a stale day is refused at save time as well.
+   No unsaved work -> the new day starts at once. Unsaved work -> the logout
+   guard asks; "finish the old day first" keeps the old day until that work is
+   saved, and the next check rolls over by itself. */
+let dayDeferred = '';                        // the new day the user chose to put off
+function dayStale() {
+  return !!(state.staff && state.token && state.salesDate && businessDate() !== state.salesDate
+    && $('view-login').classList.contains('hidden'));
+}
+function dayRisks() {
+  const risks = logoutRisks();
+  if (!$('view-capture').classList.contains('hidden') && state.current && !state.current.offset) {
+    const { m, mode } = state.current;
+    const open = mode === 'baseline'
+      ? !(state.baselineMeta[m.id] || {}).saved && baselineHasShots(m)
+      : (() => { const r = state.records[m.id]; return r && !r.saved && recHasChannelData(r); })();
+    if (open && !risks.some((x) => x.m.id === m.id)) risks.push({ m, kind: 'draft' });
+  }
+  return risks;
+}
+function startNewDay() {
+  dayDeferred = '';
+  enterApp();
+  toast(`New business day — ${bizDayLabel(state.salesDate)}`);
+}
+function ensureBusinessDate() {             // -> 'current' | 'rolled' | 'asked' | 'deferred'
+  if (!dayStale()) return 'current';
+  const today = businessDate();
+  const risks = dayRisks();
+  if (!risks.length) { startNewDay(); return 'rolled'; }
+  if (dayDeferred === today) return 'deferred';
+  dayDeferred = today;
+  showGuard(risks, `Start ${bizDayLabel(today)} — unsaved data will be lost`,
+    `Finish ${bizDayLabel(state.salesDate)} first`, startNewDay);
+  return 'asked';
+}
+
 const LIVE_MS = 20000;
 let liveVer = null, liveTimer = null, liveBusy = false;
 function noteVersion(resp) { if (resp && typeof resp.version === 'number') liveVer = resp.version; }
 async function liveTick() {
   if (CONFIG.demo || !state.staff || !state.site || state.site.id === CATERING_SITE) return;
   if (document.hidden || $('view-checklist').classList.contains('hidden') || state.hydrating || liveBusy) return;
+  if (ensureBusinessDate() !== 'current') return;
   liveBusy = true;
   try {
     const r = await api(`/api/records/version?site=${state.site.id}`);
@@ -966,7 +1012,7 @@ async function liveTick() {
 }
 function liveStart() { liveStop(); liveTimer = setInterval(liveTick, LIVE_MS); }
 function liveStop() { if (liveTimer) clearInterval(liveTimer); liveTimer = null; liveVer = null; }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) liveTick(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { ensureBusinessDate(); liveTick(); } });
 function merchantDone(m) {
   const r = state.records[m.id];
   if (!r || !r.saved) return false;
@@ -1673,7 +1719,17 @@ function rejectAmend() {
 $('btn-reject').onclick = rejectAmend;
 
 function openCapture(mid, mode, offset = 0, from = 'checklist') {
+  if (!offset && dayStale()) {
+    const day = ensureBusinessDate();
+    if (day === 'asked') return;             // the guard is up: let them choose first
+    if (day === 'deferred' && mode === 'baseline') {
+      toast(`It's ${bizDayLabel(businessDate())} now — save or discard ${bizDayLabel(state.salesDate)}'s unsaved records first; opening GMV belongs to today`);
+      return;
+    }
+    // 'rolled': the list was rebuilt for the new day; ids are stable, so carry on
+  }
   const m = findMerchant(mid);
+  if (!m) return;
   state.current = { m, mode, offset, from };
   const store = recordsFor(offset);
   if (!store[mid]) store[mid] = { status: 'Operated', channels: {}, expanded: {} };
@@ -2664,6 +2720,9 @@ function afterSaveGo(mid, mode, said, alwaysSay = false) {
 }
 
 async function postRecord(payload, path = '/api/records') {
+  if (payload.recordType === 'baseline' && payload.salesDate !== businessDate()) {
+    throw new Error(`a new business day started (${bizDayLabel(businessDate())}) — go back to the list; the opening GMV belongs to today`);
+  }
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 90000);
   try {
