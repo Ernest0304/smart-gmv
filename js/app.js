@@ -5,6 +5,9 @@
    All dynamic strings pass through esc(). */
 
 const $ = (id) => document.getElementById(id);
+/* This build's ?v= stamp, sent as X-App-Build: the server can refuse writes from
+   an older cached copy when a change makes old code unsafe (SMARTGMV_MIN_BUILD). */
+const APP_BUILD = (document.currentScript && new URL(document.currentScript.src, location.href).searchParams.get('v')) || 'dev';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 /* Field errors were invisible — nobody reads a phone's console at 21:30 (review
@@ -17,7 +20,7 @@ function reportClientError(kind, detail) {
   try { site = state.site ? state.site.id : ''; } catch { /* before state exists */ }
   const v = document.querySelector('.view:not(.hidden)');
   const entry = { kind, detail: String(detail || '').slice(0, 800), at: new Date().toISOString(),
-    site, view: v ? v.id : '', build: (document.querySelector('script[src*="app.js"]')?.src.split('v=')[1]) || '' };
+    site, view: v ? v.id : '', build: APP_BUILD };
   console.error('[smart-gmv]', entry);
   if (!CLIENT_LOG_PATH || CONFIG.demo) return;
   fetch(CONFIG.apiBase + CLIENT_LOG_PATH, { method: 'POST', keepalive: true,
@@ -62,6 +65,7 @@ async function api(path, opts) {
   const o = { ...(opts || {}) };
   o.headers = { ...(o.headers || {}) };
   if (state.token && !isLoginCall(path, o)) o.headers.Authorization = `Bearer ${state.token}`;
+  o.headers['X-App-Build'] = APP_BUILD;
   if (CONFIG.demo) return DEMO.fetch(path, o);   // preview build: canned, offline
   const sent = state.token;
   const r = await fetch(`${CONFIG.apiBase}${path}`, o);
