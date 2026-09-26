@@ -902,6 +902,19 @@ async function enterApp() {
 const numOrU = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v));
 const photoIdOf = (link) => (String(link || '').match(/\/d\/([A-Za-z0-9_-]{20,})/) || [])[1];
 
+/* What a record held when it was last saved or read from the server, as one
+   string. Anything typed, shot, declared or toggled since makes it differ —
+   whatever path made the change — so the live refresh can tell a saved record
+   that is being edited from one that is not (review 25 Sep, #12). */
+function recSig(r) {
+  return JSON.stringify([r.status, Object.keys(r.channels || {}).sort().map((ch) => {
+    const v = r.channels[ch] || {};
+    return [ch, v.finalOrders ?? null, v.finalGmv ?? null, !!v.noSales,
+      v.photoLink || (v.photoUrl ? 'local' : ''),
+      (v.extras || []).map((e) => [e.gmv ?? null, e.photoLink || (e.photoUrl ? 'local' : '')])];
+  })]);
+}
+
 /* One server row (GET /api/records[…]) -> the local editable record shape.
    photoId feeds the /api/photo proxy so Drive evidence renders on phones. */
 function serverRecToLocal(sr) {
@@ -922,6 +935,7 @@ function serverRecToLocal(sr) {
         photoId: e.photoId || photoIdOf(e.photo) })),
     };
   });
+  rec._savedSig = recSig(rec);
   return rec;
 }
 
@@ -951,7 +965,8 @@ function localBusy(m, baseline) {
     return !!(bm.inFlight || bm.error || (!bm.saved && baselineHasShots(m)));
   }
   const r = state.records[m.id];
-  return !!(r && (r.inFlight || r.saveError || r.draft || (!r.saved && recHasChannelData(r))));
+  return !!(r && (r.inFlight || r.saveError || r.draft || (!r.saved && recHasChannelData(r))
+    || (r.saved && r._savedSig !== undefined && recSig(r) !== r._savedSig)));   // saved, then edited here
 }
 async function hydrateTodayInner(live = false) {
   // the catering entry is not a daily per-site round — nothing to rehydrate
@@ -2833,6 +2848,7 @@ async function saveRecord(mid) {
       adoptLinks(rec, resp || {});
       noteVersion(resp);
       if (rec.status !== 'Operated') rec.channels = {};
+      rec._savedSig = recSig(rec);
       if (resp && resp.billing === 'NO_BASELINE') {
         toast(`${m.brand} saved — ⚠ no opening GMV this morning · flagged for supervisor`);
       }
@@ -2875,6 +2891,7 @@ async function saveAmend(mid, offset, from) {
     rec.billingFlag = resp.billing || '';
     adoptLinks(rec, resp || {});
     if (rec.status !== 'Operated') rec.channels = {};
+    rec._savedSig = recSig(rec);
     toast(`${m.brand} — ${dayLabel(offset)} saved ✓, audit logged`
       + (resp.billing === 'NO_BASELINE' ? ' · ⚠ no opening GMV that day' : ''));
     if (from === 'review') { renderReview(); show('view-review'); }
