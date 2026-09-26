@@ -31,10 +31,16 @@ function loadSession() {
     return raw ? JSON.parse(raw) : null;
   } catch (e) { return null; }
 }
+/* The login calls prove identity with the PIN itself; a bearer token left over
+   from an expired session has no business riding along (review 25 Sep, #7). */
+function isLoginCall(path, o) {
+  return path === '/api/staff/verify' || path === '/api/staff/pin'
+    || (path === '/api/staff' && String(o.method || 'GET').toUpperCase() === 'POST');
+}
 async function api(path, opts) {
   const o = { ...(opts || {}) };
   o.headers = { ...(o.headers || {}) };
-  if (state.token) o.headers.Authorization = `Bearer ${state.token}`;
+  if (state.token && !isLoginCall(path, o)) o.headers.Authorization = `Bearer ${state.token}`;
   if (CONFIG.demo) return DEMO.fetch(path, o);   // preview build: canned, offline
   const r = await fetch(`${CONFIG.apiBase}${path}`, o);
   if (r.status === 401) {
@@ -78,9 +84,13 @@ async function loadCatalog() {
     /* Before login the server hands back only the site list (with counts) and
        the staff picker; the merchant book and contract terms come once a
        session exists, so this runs twice — at boot, and again from enterApp. */
-    const r = CONFIG.demo ? await DEMO.fetch('/api/catalog')
-      : await fetch(`${CONFIG.apiBase}/api/catalog`,
-          state.token ? { headers: { Authorization: `Bearer ${state.token}` } } : {});
+    const get = () => (CONFIG.demo ? DEMO.fetch('/api/catalog')
+      : fetch(`${CONFIG.apiBase}/api/catalog`,
+          state.token ? { headers: { Authorization: `Bearer ${state.token}` } } : {}));
+    let r = await get();
+    // A token left in sessionStorage by an expired session: drop it and ask again
+    // without it, or every "Try again" repeats the same refusal (review #7).
+    if (r.status === 401 && state.token) { setSession(''); r = await get(); }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const raw = await r.json();
     DATA = {
