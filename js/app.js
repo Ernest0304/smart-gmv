@@ -418,9 +418,10 @@ const takeExtras = (input) => input.onchange = () => {
     const reader = new FileReader();
     reader.onload = () => downscale(reader.result, 1280, 0.8).then((jpeg) => {
       // order-detail pages are large-font text: 1280px keeps digits crisp at half the bytes
-      const val = readVal(ctx, ch);             // re-read: a retake may have replaced the object
-      if (!val) return;
-      val.extras = val.extras || [];
+      // re-read: a retake replaces the object but keeps the pending-order list;
+      // ✕ Remove and "No sales" replace it WITHOUT one — the photo is dropped
+      const val = ctxAlive(ctx) ? readVal(ctx, ch) : null;
+      if (!val || !Array.isArray(val.extras)) return;
       const entry = { photoUrl: jpeg, photoDirty: true, pendingAI: true, gen: val.gen || 0 };
       val.extras.push(entry);
       if (viewingCtx(ctx)) { renderChannelCards(); updateSaveBtn(); }
@@ -1112,12 +1113,23 @@ function startNewDay() {
   enterApp();
   toast(`New business day — ${bizDayLabel(state.salesDate)}`);
 }
-function ensureBusinessDate() {             // -> 'current' | 'rolled' | 'asked' | 'deferred'
-  if (!dayStale()) return 'current';
+function ensureBusinessDate(intent) {       // -> 'current' | 'rolled' | 'asked' | 'deferred'
+  if (!dayStale() || !state.site) return 'current';
   const today = businessDate();
+  if (state.site.id === CATERING_SITE) {
+    // not a daily round: every catering record carries its own sales date and
+    // nothing is rehydrated, so the date simply moves on — no reset, no guard
+    state.salesDate = today;
+    $('hdr-date').textContent = bizDayLabel(today);
+    return 'current';
+  }
   const risks = dayRisks();
   if (!risks.length) { startNewDay(); return 'rolled'; }
-  if (dayDeferred === today) return 'deferred';
+  // "Finish the old day first" covers the old day's UNSAVED items only. At 10 am
+  // the platforms' screens show today's sales, so any other kitchen opened now
+  // would file today's figures on yesterday — ask again instead.
+  if (dayDeferred === today && (!intent || risks.some((u) => u.m.id === intent.mid
+      && (intent.mode === 'baseline') === (u.kind === 'baseline')))) return 'deferred';
   dayDeferred = today;
   showGuard(risks, `Start ${bizDayLabel(today)} — unsaved data will be lost`,
     `Finish ${bizDayLabel(state.salesDate)} first`, startNewDay);
@@ -1872,13 +1884,10 @@ $('btn-reject').onclick = rejectAmend;
 
 function openCapture(mid, mode, offset = 0, from = 'checklist') {
   if (!offset && dayStale()) {
-    const day = ensureBusinessDate();
-    if (day === 'asked') return;             // the guard is up: let them choose first
-    if (day === 'deferred' && mode === 'baseline') {
-      toast(`It's ${bizDayLabel(businessDate())} now — save or discard ${bizDayLabel(state.salesDate)}'s unsaved records first; opening GMV belongs to today`);
-      return;
-    }
-    // 'rolled': the list was rebuilt for the new day; ids are stable, so carry on
+    // 'asked': the guard is up — let them choose first. 'deferred': this is one
+    // of the old day's unsaved items. 'rolled': the list was rebuilt for the new
+    // day; ids are stable, so the same card opens for today.
+    if (ensureBusinessDate({ mid, mode }) === 'asked') return;
   }
   const m = findMerchant(mid);
   if (!m) return;
@@ -2322,7 +2331,16 @@ function viewingCtx(ctx) {
     && !$('view-capture').classList.contains('hidden');
 }
 
+/* The kitchen a frozen context points at can be gone by the time a photo has
+   decoded: a new business day, another site or another person reset the store. */
+function ctxAlive(ctx) {
+  return ctx.mode === 'baseline' || !!recordsFor(ctx.offset)[ctx.m.id];
+}
 function runExtraction(ctx, ch, jpeg) {     // ctx frozen when the picker opened (see pendingPick)
+  if (!ctxAlive(ctx)) {
+    toast('The round was reloaded while the photo was decoding — please shoot it again');
+    return;
+  }
   // Non-AI channels: photo = evidence only, numbers stay manual.
   if (!AI_CHANNELS.includes(ch)) {
     const prev = readVal(ctx, ch) || {};
@@ -2890,7 +2908,9 @@ function nextWaiting(mid, mode) {
 }
 function afterSaveGo(mid, mode, said, alwaysSay = false) {
   renderChecklist();
-  const nxt = autoNextOn() ? nextWaiting(mid, mode) : null;
+  // on a business day that has ended the next kitchen would be today's work:
+  // back to the list — the next check rolls the day over once nothing is left
+  const nxt = autoNextOn() && !dayStale() ? nextWaiting(mid, mode) : null;
   if (!nxt) { if (alwaysSay && said) toast(said); show('view-checklist'); return; }
   openCapture(nxt.id, mode);
   if (said) toast(`${said} · next: ${nxt.kitchen} ${nxt.brand}`);
