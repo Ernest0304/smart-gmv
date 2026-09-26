@@ -7,6 +7,27 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/* Field errors were invisible — nobody reads a phone's console at 21:30 (review
+   25 Sep, "next steps" 3). Every uncaught error and unhandled rejection is
+   logged with where it happened; set CLIENT_LOG_PATH once the server has an
+   endpoint to receive them, and they are posted there too. */
+const CLIENT_LOG_PATH = '';            // the server has no client-log endpoint yet
+function reportClientError(kind, detail) {
+  let site = '';
+  try { site = state.site ? state.site.id : ''; } catch { /* before state exists */ }
+  const v = document.querySelector('.view:not(.hidden)');
+  const entry = { kind, detail: String(detail || '').slice(0, 800), at: new Date().toISOString(),
+    site, view: v ? v.id : '', build: (document.querySelector('script[src*="app.js"]')?.src.split('v=')[1]) || '' };
+  console.error('[smart-gmv]', entry);
+  if (!CLIENT_LOG_PATH || CONFIG.demo) return;
+  fetch(CONFIG.apiBase + CLIENT_LOG_PATH, { method: 'POST', keepalive: true,
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry) }).catch(() => {});
+}
+window.addEventListener('error', (e) =>
+  reportClientError('error', `${e.message} @ ${String(e.filename || '').split('/').pop()}:${e.lineno}:${e.colno}`));
+window.addEventListener('unhandledrejection', (e) =>
+  reportClientError('unhandledrejection', (e.reason && (e.reason.stack || e.reason.message)) || e.reason));
+
 /* Live catalog (sites / merchants / staff / customers), loaded from
    /api/catalog at boot. The sheet is the single source of truth — the app
    ships with no roster or merchant data. */
