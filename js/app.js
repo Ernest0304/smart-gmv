@@ -2743,6 +2743,14 @@ function buildPayload(m, rec, salesDate) {
    the base64 copies — 25 kitchens of full-size dataURLs is exactly what gets
    a mobile Safari tab evicted mid-round. */
 function adoptLinks(rec, resp) {
+  /* A channel whose photo went up earlier (the AI read stores it and returns the
+     link) is sent as photoLink only; the thumbnail can come from the /api/photo
+     proxy, so its base64 copy goes once the save is confirmed — whether or not
+     the server echoes that link back (review 25 Sep, #19). */
+  Object.values(rec._sent || {}).forEach(({ val, extras }) => {
+    if (val && val.photoLink && !val.photoDirty) val.photoUrl = undefined;
+    (extras || []).forEach((e) => { if (e.photoLink && !e.photoDirty) e.photoUrl = undefined; });
+  });
   Object.entries(resp.photoLinks || {}).forEach(([ch, link]) => {
     const v = (rec._sent[ch] && rec._sent[ch].val) || rec.channels[ch];
     if (v && link) { v.photoLink = link; v.photoId = photoIdOf(link); v.photoDirty = false; v.photoUrl = undefined; }
