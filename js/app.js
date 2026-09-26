@@ -298,54 +298,62 @@ function makeInput(opts) {
 
 const fileInput = makeInput({});                    // gallery / files
 const cameraInput = makeInput({ capture: true });   // straight to the camera
-let pendingChannel = null;
+/* The merchant is frozen when the picker OPENS, not when the photo arrives:
+   decoding a 12 MP shot takes 0.5–2 s on a low-end phone, and with auto-next
+   the user is often on the next kitchen by then — the photo and its AI reading
+   landed on THAT kitchen (review 25 Sep, #3). */
+let pendingPick = null;                    // { ctx, ch }
 const takeSingle = (input) => input.onchange = () => {
   const file = input.files && input.files[0];
-  const ch = pendingChannel;
+  const pick = pendingPick;
   input.value = '';
-  if (!file || !ch) return;
+  if (!file || !pick) return;
   const reader = new FileReader();
-  reader.onload = () => downscale(reader.result, 1600, 0.85).then((jpeg) => runExtraction(ch, jpeg));
+  reader.onload = () => downscale(reader.result, 1600, 0.85).then((jpeg) => runExtraction(pick.ctx, pick.ch, jpeg));
   reader.readAsDataURL(file);
 };
 takeSingle(fileInput);
 takeSingle(cameraInput);
-function openPicker(ch) { pendingChannel = ch; fileInput.click(); }
-function openCamera(ch) { pendingChannel = ch; cameraInput.click(); }
+function openPicker(ch) { pendingPick = { ctx: { ...state.current }, ch }; fileInput.click(); }
+function openCamera(ch) { pendingPick = { ctx: { ...state.current }, ch }; cameraInput.click(); }
 
 /* Pending-pickup orders: burst-shoot all the locker orders in the native
    camera and add them in one go (gallery, multi-select), or shoot them one at
    a time from here (camera) — same two-path rule as the summary shot. */
 const extrasInput = makeInput({ multiple: true });
 const extrasCamera = makeInput({ capture: true });
-let pendingExtrasChannel = null;
+let pendingExtras = null;                  // { ctx, ch } — frozen at open, same reason
 const takeExtras = (input) => input.onchange = () => {
   const files = [...(input.files || [])];
-  const ch = pendingExtrasChannel;
+  const pick = pendingExtras;
   input.value = '';
-  if (!files.length || !ch) return;
-  const val = channelValue(ch) || {};
-  if (!channelValue(ch)) setChannelValue(ch, val);
-  val.extras = val.extras || [];
-  const room = 12 - val.extras.length;
+  if (!files.length || !pick) return;
+  const { ctx, ch } = pick;
+  if (!readVal(ctx, ch)) writeVal(ctx, ch, {});
+  const start = readVal(ctx, ch);
+  start.extras = start.extras || [];
+  const room = 12 - start.extras.length;
   if (room <= 0) { toast('Limit reached — up to 12 pending orders per channel'); return; }
   if (files.length > room) toast(`Only ${room} more can be added (12 max) — first ${room} taken`);
   files.slice(0, room).forEach((file) => {
     const reader = new FileReader();
     reader.onload = () => downscale(reader.result, 1280, 0.8).then((jpeg) => {
       // order-detail pages are large-font text: 1280px keeps digits crisp at half the bytes
+      const val = readVal(ctx, ch);             // re-read: a retake may have replaced the object
+      if (!val) return;
+      val.extras = val.extras || [];
       const entry = { photoUrl: jpeg, photoDirty: true, pendingAI: true, gen: val.gen || 0 };
       val.extras.push(entry);
-      if (viewingCtx(state.current)) { renderChannelCards(); updateSaveBtn(); }
-      runExtraExtraction({ ...state.current }, ch, entry);
+      if (viewingCtx(ctx)) { renderChannelCards(); updateSaveBtn(); }
+      runExtraExtraction(ctx, ch, entry);
     });
     reader.readAsDataURL(file);
   });
 };
 takeExtras(extrasInput);
 takeExtras(extrasCamera);
-function openExtrasPicker(ch) { pendingExtrasChannel = ch; extrasInput.click(); }
-function openExtrasCamera(ch) { pendingExtrasChannel = ch; extrasCamera.click(); }
+function openExtrasPicker(ch) { pendingExtras = { ctx: { ...state.current }, ch }; extrasInput.click(); }
+function openExtrasCamera(ch) { pendingExtras = { ctx: { ...state.current }, ch }; extrasCamera.click(); }
 
 /* Re-encode to JPEG ≤maxPx long edge: fixes iPhone HEIC uploads and cuts
    upload size + AI token cost without losing digit legibility. */
@@ -2102,16 +2110,13 @@ function viewingCtx(ctx) {
     && !$('view-capture').classList.contains('hidden');
 }
 
-function runExtraction(ch, photoUrl) {
-  const ctx = { ...state.current };
-
+function runExtraction(ctx, ch, jpeg) {     // ctx frozen when the picker opened (see pendingPick)
   // Non-AI channels: photo = evidence only, numbers stay manual.
   if (!AI_CHANNELS.includes(ch)) {
     const prev = readVal(ctx, ch) || {};
-    writeVal(ctx, ch, { ...prev, photoUrl, photoDirty: true, photoLink: undefined,
+    writeVal(ctx, ch, { ...prev, photoUrl: jpeg, photoDirty: true, photoLink: undefined,
       screen: 'Photo saved as evidence — enter the numbers manually for this channel.' });
-    renderChannelCards();
-    updateSaveBtn();
+    if (viewingCtx(ctx)) { renderChannelCards(); updateSaveBtn(); }
     return;
   }
 
@@ -2122,7 +2127,7 @@ function runExtraction(ch, photoUrl) {
   // settle would resurrect the superseded photo/link/numbers (review 29 Jul).
   // _dirty: after a saved opening GMV, a retake must re-arm "Update & save" —
   // the piggyback's photoDirty:false alone no longer implies "nothing to post".
-  writeVal(ctx, ch, { ...prevVal, photoUrl, photoDirty: true,
+  writeVal(ctx, ch, { ...prevVal, photoUrl: jpeg, photoDirty: true,
     photoLink: undefined, photoId: undefined, pendingAI: true,
     _dirty: true, gen: (prevVal.gen || 0) + 1 });
   const gen = (readVal(ctx, ch) || {}).gen || 0;   // ✕ Remove also bumps this
@@ -2134,7 +2139,7 @@ function runExtraction(ch, photoUrl) {
       if (rec) rec.pending = Math.max(0, (rec.pending || 1) - 1);
       return;
     }
-    const val = { ...prev, ...patch, photoUrl, pendingAI: false };
+    const val = { ...prev, ...patch, photoUrl: jpeg, pendingAI: false };
     // Respect anything the staff member typed while the read was in flight.
     if (prev.editedOrders) val.finalOrders = prev.finalOrders;
     else { val.finalOrders = patch.orders; val.editedOrders = false; }
@@ -2158,7 +2163,7 @@ function runExtraction(ch, photoUrl) {
   api('/api/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: photoUrl, channel: ch,
+    body: JSON.stringify({ image: jpeg, channel: ch,
       mode: isBaseline ? 'baseline' : 'closing',
       brand: ctx.m.brand, aigens: !!ctx.m.aigens,
       recordId: recordIdFor(ctx.m, isBaseline ? 'baseline' : 'closing', sdate),
