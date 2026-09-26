@@ -2242,11 +2242,18 @@ function runExtraction(ctx, ch, jpeg) {     // ctx frozen when the picker opened
   const rec = ctx.mode === 'baseline' ? null : recordsFor(ctx.offset)[ctx.m.id];
   if (rec) rec.pending = (rec.pending || 0) + 1;
   const prevVal = readVal(ctx, ch) || {};
+  // A RETAKE replaces the evidence, so everything tied to the old photo goes
+  // with it: typed corrections, marks drawn on it, its corrections log, its
+  // mismatch note. Kept, those made settle() ignore the new reading and drew the
+  // old boxes on the new photo (review 25 Sep, #10). Pending-pickup orders are
+  // separate photos and stay. The FIRST photo after typing keeps what was typed.
+  const retake = !!(prevVal.photoUrl || prevVal.photoLink);
+  const base = retake ? { extras: prevVal.extras } : prevVal;
   // gen bump: a retake must invalidate any older in-flight read, or its stale
   // settle would resurrect the superseded photo/link/numbers (review 29 Jul).
   // _dirty: after a saved opening GMV, a retake must re-arm "Update & save" —
   // the piggyback's photoDirty:false alone no longer implies "nothing to post".
-  writeVal(ctx, ch, { ...prevVal, photoUrl: jpeg, photoDirty: true,
+  writeVal(ctx, ch, { ...base, photoUrl: jpeg, photoDirty: true,
     photoLink: undefined, photoId: undefined, pendingAI: true,
     _dirty: true, gen: (prevVal.gen || 0) + 1 });
   const gen = (readVal(ctx, ch) || {}).gen || 0;   // ✕ Remove also bumps this
