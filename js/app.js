@@ -43,6 +43,13 @@ async function api(path, opts) {
       // The PIN buffer still held the last login's four digits: the expired
       // screen showed four filled dots and ONE key press re-sent the old PIN
       // (review 25 Sep, #1). Start the pad empty.
+      // Remember whose round this was: the same person back on the same site
+      // and business day resumes it instead of starting over (review #2).
+      if (!state.reauth) {
+        const v = document.querySelector('.view:not(.hidden)');
+        state.reauth = { staffId: state.staff.id, siteId: state.site && state.site.id,
+          salesDate: state.salesDate, view: v ? v.id : '' };
+      }
       state.pin = '';
       state.pinFirst = '';
       state.pinMode = 'verify';
@@ -755,8 +762,9 @@ async function verifyPin() {
     state.pin = '';                    // the session replaces the PIN: never keep it in memory
     state.pinFirst = '';
     paintPin();
+    const resume = canResume(d.staff && d.staff.id);
     state.staff = d.staff;
-    enterApp();
+    if (resume) resumeSession(); else enterApp();
   } catch (e) {
     if (e.message === 'no session returned') {
       pinFail('The app was just updated — enter your PIN once more');
@@ -769,8 +777,36 @@ async function verifyPin() {
 }
 document.querySelectorAll('.back-link').forEach((b) => b.onclick = () => loginStep(b.dataset.back));
 
+/* A session that expired mid-round (401) sends the user to the PIN screen with
+   everything still in memory. The same person, back on the same site and
+   business day, gets that round back: only the token changes, and a LIVE
+   hydrate fills in what other phones saved without touching anything this
+   phone is working on. enterApp() would wipe typed readings, photos and
+   drafts without a word (review 25 Sep, #2). Anyone else starts fresh. */
+function canResume(staffId) {
+  const r = state.reauth;
+  return !!(r && staffId && r.staffId === staffId && state.site && r.siteId === state.site.id
+    && r.salesDate === businessDate() && state.merchants && state.merchants.length);
+}
+function resumeSession() {
+  const view = state.reauth ? state.reauth.view : '';
+  state.reauth = null;
+  rememberUser();
+  if (view === 'view-capture' && state.current && findMerchant(state.current.m.id)) {
+    renderChannelCards();
+    updateSaveBtn();
+    show('view-capture');
+  } else {
+    backToChecklist();
+  }
+  hydrateToday(true);
+  liveStart();
+  toast('Welcome back — your unsaved work is still here');
+}
+
 /* ---------- checklist ---------- */
 async function enterApp() {
+  state.reauth = null;
   rememberUser();     // single funnel for PIN verify, PIN claim and registration
   if (!DATA.merchants.length && !CONFIG.demo) {
     try { await loadCatalog(); }             // merchant book needs the session
@@ -1153,6 +1189,7 @@ $('btn-logout').onclick = () => attemptLogout();
 function logout() {
   liveStop();
   setSession('');
+  state.reauth = null;
   state.staff = null;   // else beforeunload guards a session the user discarded
   state.pin = '';
   state.pinFirst = '';
