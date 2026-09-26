@@ -1890,6 +1890,7 @@ function renderCateringDate(on) {
   el.classList.remove('hidden');
   $('cat-date').value = rec.salesDate || state.salesDate;
   $('cat-date').max = state.salesDate;
+  $('cat-date').min = dateForOffset(45);        // the server accepts catering up to 45 days back
   $('cat-date').onchange = () => {
     const v = $('cat-date').value;
     if (!v) return;
