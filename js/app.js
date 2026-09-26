@@ -40,11 +40,22 @@ async function api(path, opts) {
   if (r.status === 401) {
     setSession('');
     if (state.staff) {
+      // The PIN buffer still held the last login's four digits: the expired
+      // screen showed four filled dots and ONE key press re-sent the old PIN
+      // (review 25 Sep, #1). Start the pad empty.
+      state.pin = '';
+      state.pinFirst = '';
+      state.pinMode = 'verify';
+      paintPin();
+      paintPinTitle();
+      $('pin-error').classList.add('hidden');
       toast('Session expired — enter your PIN again');
       loginStep('pin');
       show('view-login');
     }
-    throw new Error('session expired');
+    const err = new Error('session expired');
+    err.expired = true;          // callers that toast their own failure stay quiet
+    throw err;
   }
   return r;
 }
@@ -632,34 +643,32 @@ function renderPinPad() {
   $('pin-pad').querySelectorAll('.pin-key').forEach((b) => b.onclick = () => pinKey(b.dataset.k));
 }
 function pinKey(k) {
-  {
-    if (pinChecking) return;
-    $('pin-error').classList.add('hidden');
-    if (k === '⌫') state.pin = state.pin.slice(0, -1);
-    else if (state.pin.length < 4) state.pin += k;
-    paintPin();
-    if (state.pin.length !== 4) return;
-    if (state.pinMode === 'create') {
-      state.pinFirst = state.pin;
+  if (pinChecking) return;
+  $('pin-error').classList.add('hidden');
+  if (k === '⌫') state.pin = state.pin.slice(0, -1);
+  else if (state.pin.length < 4) state.pin += k;
+  paintPin();
+  if (state.pin.length !== 4) return;
+  if (state.pinMode === 'create') {
+    state.pinFirst = state.pin;
+    state.pin = '';
+    state.pinMode = 'confirm';
+    setTimeout(() => { paintPin(); paintPinTitle(); }, 180);
+  } else if (state.pinMode === 'confirm') {
+    if (state.pin === state.pinFirst) claimPin();
+    else {
       state.pin = '';
-      state.pinMode = 'confirm';
-      setTimeout(() => { paintPin(); paintPinTitle(); }, 180);
-    } else if (state.pinMode === 'confirm') {
-      if (state.pin === state.pinFirst) claimPin();
-      else {
-        state.pin = '';
-        state.pinFirst = '';
-        state.pinMode = 'create';
-        setTimeout(() => {
-          paintPin();
-          paintPinTitle();
-          $('pin-error').textContent = "The PINs didn't match — start again";
-          $('pin-error').classList.remove('hidden');
-        }, 180);
-      }
-    } else {
-      verifyPin();
+      state.pinFirst = '';
+      state.pinMode = 'create';
+      setTimeout(() => {
+        paintPin();
+        paintPinTitle();
+        $('pin-error').textContent = "The PINs didn't match — start again";
+        $('pin-error').classList.remove('hidden');
+      }, 180);
     }
+  } else {
+    verifyPin();
   }
 }
 /* Hardware keyboard on the PIN screen (Ernest 30 Jul): digits + Backspace,
@@ -698,6 +707,9 @@ async function claimPin() {
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
     if (!d.token) throw new Error('The app was just updated — log in once more');
     setSession(d.token, d.staff && d.staff.id);
+    state.pin = '';                    // the session replaces the PIN: never keep it in memory
+    state.pinFirst = '';
+    paintPin();
     state.staff = { ...d.staff, needsPin: false };
     const src = DATA.staff.find((p) => p.id === d.staff.id);
     if (src) src.needsPin = false;
@@ -740,6 +752,9 @@ async function verifyPin() {
     // was missing on 3 Aug — a fresh PIN login landed on "session expired").
     if (!d.token) throw new Error('no session returned');
     setSession(d.token, d.staff && d.staff.id);
+    state.pin = '';                    // the session replaces the PIN: never keep it in memory
+    state.pinFirst = '';
+    paintPin();
     state.staff = d.staff;
     enterApp();
   } catch (e) {
@@ -877,6 +892,7 @@ async function hydrateTodayInner(live = false) {
     }
   } catch (e) {
     if (live) return;                           // a missed refresh is nothing to shout about — next poll
+    if (e.expired) return;                      // api() already sent them to the PIN screen and said why
     state.hydrateError = e.message;
     renderChecklist();
     toast(`⚠ Could not check the server for today's saved records (${e.message})`);
