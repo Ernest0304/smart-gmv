@@ -3026,6 +3026,14 @@ async function saveBaseline(mid) {
           if (b && link) { b.photoLink = link; b.photoDirty = false; b.photoUrl = undefined; b._dirty = false; }
         });
         Object.values(sent).forEach((b) => { b._dirty = false; });
+        // A closing saved before this opening was flagged NO_BASELINE; the server
+        // has just re-billed it against this reading — the card shows that now,
+        // not at the next reload.
+        const rc = resp.recomputed;
+        const closing = rc && state.records[mid];
+        if (closing && closing.saved && (!rc.closingId || rc.closingId === closing.recordId) && rc.flag !== undefined) {
+          closing.billingFlag = rc.flag || '';
+        }
         toast(`${m.brand} opening GMV recorded ✓ — deducted automatically tonight`);
       }
     }
