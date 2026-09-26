@@ -87,13 +87,20 @@ async function loadCatalog() {
     const get = () => (CONFIG.demo ? DEMO.fetch('/api/catalog')
       : fetch(`${CONFIG.apiBase}/api/catalog`,
           state.token ? { headers: { Authorization: `Bearer ${state.token}` } } : {}));
+    let sent = !!state.token;
     let r = await get();
     // A token left in sessionStorage by an expired session: drop it and ask again
     // without it, or every "Try again" repeats the same refusal (review #7).
-    if (r.status === 401 && state.token) { setSession(''); r = await get(); }
+    if (r.status === 401 && state.token) { setSession(''); sent = false; r = await get(); }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const raw = await r.json();
+    // The merchant book is real only if a session asked for it. The server answers
+    // a token it no longer accepts with the PUBLIC shape (no merchant book) rather
+    // than 401 — a leftover token is dropped here too.
+    const full = sent && Array.isArray(raw.merchants);
+    if (state.token && !full && !state.staff) setSession('');
     DATA = {
+      full,                              // false = pre-login shape, merchant book not included
       sites: raw.sites,
       staff: raw.staff,
       customers: raw.customers || [],
@@ -108,10 +115,12 @@ async function loadCatalog() {
       })),
     };
     renderSites();
+    return true;
   } catch (e) {
     $('site-grid').innerHTML = `<p class="ab-note">⚠ Could not load the site list (${esc(e.message)}).</p>
       <button class="btn-primary" id="btn-catalog-retry" style="margin-top:10px">Try again</button>`;
-    $('btn-catalog-retry').onclick = loadCatalog;
+    $('btn-catalog-retry').onclick = () => loadCatalog().catch(() => {});
+    throw e;                              // enterApp() must know; the boot call ignores it
   }
 }
 
@@ -799,6 +808,26 @@ async function verifyPin() {
 }
 document.querySelectorAll('.back-link').forEach((b) => b.onclick = () => loginStep(b.dataset.back));
 
+async function loadMerchantBook() {
+  await loadCatalog();
+  if (!DATA.full) throw new Error('the server did not return the merchant list for this session');
+}
+async function retryMerchants() {
+  const btn = $('btn-merchants-retry');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  try {
+    await loadMerchantBook();
+    state.catalogError = null;
+    state.merchants = siteMerchants(state.site.id);
+    renderChecklist();
+    hydrateToday();
+  } catch (e) {
+    state.catalogError = e.message;
+    renderChecklist();
+    toast(`⚠ Still could not load the merchant list (${e.message})`);
+  }
+}
+
 /* A session that expired mid-round (401) sends the user to the PIN screen with
    everything still in memory. The same person, back on the same site and
    business day, gets that round back: only the token changes, and a LIVE
@@ -830,9 +859,16 @@ function resumeSession() {
 async function enterApp() {
   state.reauth = null;
   rememberUser();     // single funnel for PIN verify, PIN claim and registration
-  if (!DATA.merchants.length && !CONFIG.demo) {
-    try { await loadCatalog(); }             // merchant book needs the session
-    catch (e) { toast('Could not load the merchant list — pull to retry'); }
+  /* The merchant book needs the session. A failure used to be swallowed inside
+     loadCatalog(), so the list showed "No merchants at this site yet · Add the
+     first one" — staff would believe the site had no brands (review #8). */
+  state.catalogError = null;
+  if (!DATA.full && !CONFIG.demo) {
+    try { await loadMerchantBook(); }
+    catch (e) {
+      state.catalogError = e.message;
+      toast(`⚠ Could not load the merchant list (${e.message})`);
+    }
   }
   state.merchants = siteMerchants(state.site.id);
   state.records = {};
@@ -1197,6 +1233,12 @@ function renderChecklist() {
     </div>`;
   }).join('');
 
+  if (all.length === 0 && state.catalogError) {
+    $('list-evening').innerHTML = `<div class="empty-note">${ic('alert')} Could not load the merchant list (${esc(state.catalogError)}).<br>
+      <button class="btn-primary" id="btn-merchants-retry" style="margin-top:12px">Try again</button></div>`;
+    $('btn-merchants-retry').onclick = retryMerchants;
+    return;
+  }
   if (all.length === 0) {
     $('list-evening').innerHTML = state.merchants.length
       ? `<div class="empty-note">${ic('tag')} All brands at this site are disabled.<br>
@@ -3240,7 +3282,7 @@ $('ab-create').onclick = async () => {
 }
 renderPinPad();
 show('view-login');
-loadCatalog();
+loadCatalog().catch(() => {});          // a failure is painted on the site step, with Try again
 
 /* ---------- OS back gesture: act like in-app back, never nuke the night ----------
    The app is a hidden-class SPA — without this, Android's back gesture leaves
