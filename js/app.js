@@ -623,10 +623,15 @@ function openRegister() {
   $('reg-error').classList.add('hidden');
   $('reg-pin-note').classList.add('hidden');
   setRegEmp('part');
-  $('reg-home').innerHTML = `<option value="${esc(state.site.id)}">${esc(state.site.name)} (this site)</option>`
-    + DATA.sites.filter((s) => s.id !== state.site.id)
+  /* Catering is an entry in this app, not a facility: the server's home-site
+     and audit-site fields take facility codes (max 5 characters), so
+     registering from the Catering entry was refused (422) until it offered only
+     real sites. From there the default is "No fixed site". */
+  const here = state.site.id !== CATERING_SITE;
+  $('reg-home').innerHTML = (here ? `<option value="${esc(state.site.id)}">${esc(state.site.name)} (this site)</option>` : '')
+    + DATA.sites.filter((s) => s.id !== state.site.id && s.id !== CATERING_SITE)
         .map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')
-    + '<option value="">No fixed site</option>';
+    + `<option value=""${here ? '' : ' selected'}>No fixed site</option>`;
   updateRegBtn();
   loginStep('register');
 }
@@ -659,7 +664,8 @@ async function submitRegistration(allowDuplicate) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, homeSite: $('reg-home').value, pin: $('reg-pin').value,
         partTimer: regEmp !== 'full',
-        site: state.site.id, allowDuplicate: !!allowDuplicate }),
+        site: state.site.id === CATERING_SITE ? '' : state.site.id,   // audit stamp: facility codes only
+        allowDuplicate: !!allowDuplicate }),
     });
     const d = await r.json().catch(() => ({}));
     if (r.status === 409 && d.existing) {
