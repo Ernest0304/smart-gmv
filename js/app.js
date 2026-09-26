@@ -243,7 +243,10 @@ function djb2(s) {
 }
 function recordIdFor(m, type, dateStr) {
   const slug = (m.brand.toLowerCase().replace(/[^a-z0-9]/g, '') || 'x').slice(0, 12);
-  const hash = djb2(`${m.sfdcId}|${m.brand}|${m.kitchen}`).toString(36).padStart(4, '0').slice(0, 4);
+  // First 15 characters only: an 18-digit Opportunity id is the 15-digit one plus
+  // a checksum, so converting SFDC ID Map col E to 18 digits (Oct 2026) keeps every
+  // record id. String() keeps the old spelling of a missing id ("undefined").
+  const hash = djb2(`${String(m.sfdcId).slice(0, 15)}|${m.brand}|${m.kitchen}`).toString(36).padStart(4, '0').slice(0, 4);
   const ymd = (dateStr || state.salesDate).replace(/-/g, '');
   return `${m.site}-${m.kitchen}-${slug}-${hash}-${ymd}-${type === 'baseline' ? 'B' : 'C'}`;
 }
