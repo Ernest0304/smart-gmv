@@ -3495,15 +3495,17 @@ function renderDinein() {
   const r = di.read;
   const cc = r.crossCheck || {};
   const money2 = (v) => (v === null || v === undefined || v === '' ? '—' : money(Number(v)));
-  const num = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
+  // every figure here comes from the AI's read of an uploaded image — escape it like any text
+  const num = (v) => (v === null || v === undefined || v === '' ? '—' : esc(String(v)));
+  const attr = (v) => esc(v ?? '');
   const rows = di.rows.map((x, i) => `
     <div class="di-row">
       <div class="di-head"><b>${esc(x.matchedBrand)}</b><span class="bl-mini">${esc(x.kitchen)}</span></div>
       <div class="di-grid">
-        <label>Dine-in orders<input inputmode="numeric" data-di="${i}" data-f="dineinOrders" value="${x.dineinOrders ?? ''}" placeholder="—"></label>
-        <label>Dine-in sales<input inputmode="decimal" data-di="${i}" data-f="dineinGmv" value="${x.dineinGmv ?? ''}" placeholder="—"></label>
-        <label>Promo orders<input inputmode="numeric" data-di="${i}" data-f="promoOrders" value="${x.promoOrders ?? ''}" placeholder="—"></label>
-        <label>Promo sales<input inputmode="decimal" data-di="${i}" data-f="promoGmv" value="${x.promoGmv ?? ''}" placeholder="—"></label>
+        <label>Dine-in orders<input inputmode="numeric" data-di="${i}" data-f="dineinOrders" value="${attr(x.dineinOrders)}" placeholder="—"></label>
+        <label>Dine-in sales<input inputmode="decimal" data-di="${i}" data-f="dineinGmv" value="${attr(x.dineinGmv)}" placeholder="—"></label>
+        <label>Promo orders<input inputmode="numeric" data-di="${i}" data-f="promoOrders" value="${attr(x.promoOrders)}" placeholder="—"></label>
+        <label>Promo sales<input inputmode="decimal" data-di="${i}" data-f="promoGmv" value="${attr(x.promoGmv)}" placeholder="—"></label>
       </div>
       ${x.totalOrders !== null && x.totalOrders !== undefined
         ? `<div class="bl-mini">sheet shows ${num(x.totalOrders)} total orders for the month</div>` : ''}
