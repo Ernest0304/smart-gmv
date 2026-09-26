@@ -946,7 +946,12 @@ function serverRecToLocal(sr) {
 let hydrateSeq = 0;
 async function hydrateToday(live = false) {
   const seq = ++hydrateSeq;   // logout/login during a slow fetch must not clear the new session's notice
-  if (!live) state.hydrating = true;          // a live refresh never flips the list into "checking…"
+  if (!live) {                                // a live refresh never flips the list into "checking…"
+    state.hydrating = true;
+    // paint it: the flag alone never reached the screen, so "⏳ Checking the
+    // server…" was never shown during the first read (review 25 Sep, #20)
+    if (!$('view-checklist').classList.contains('hidden')) renderChecklist();
+  }
   try { await hydrateTodayInner(live); }
   finally {
     if (seq === hydrateSeq && !live) {
