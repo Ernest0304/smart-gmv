@@ -3359,7 +3359,6 @@ function renderBilling(d) {
   const shown = q ? d.merchants.filter((m) =>
     m.brand.toLowerCase().includes(q) || m.kitchen.toLowerCase().includes(q)) : d.merchants;
   const t = d.totals;
-  const manual = (m) => m.othersGmv + m.cateringGmv + m.dineinGmv + m.promoDineinGmv;
   /* Counts carry a unit and a thousands separator — a bare 1104 beside an
      amount did not say 1,104 orders. */
   const qty = (n) => `<span class="bl-q">${Number(n).toLocaleString()} <span class="bl-u">${n === 1 ? 'order' : 'orders'}</span></span>`;
@@ -3380,8 +3379,8 @@ function renderBilling(d) {
   const rows = shown.map((m) => `<div class="merchant-card" style="cursor:default">
       <div class="m-kitchen">${esc(m.kitchen)}</div>
       <div class="m-info"><div class="m-name">${esc(m.brand)}</div>
-        <div class="m-tags"><span class="bl-days">${m.days} day${m.days > 1 ? 's' : ''} recorded</span></div></div>
-      <div style="text-align:right"><div class="bl-orders">${m.totalOrders.toLocaleString()} order${m.totalOrders === 1 ? '' : 's'}</div>
+        <div class="m-tags"><span class="bl-days">${Number(m.days)} day${Number(m.days) > 1 ? 's' : ''} recorded</span></div></div>
+      <div style="text-align:right"><div class="bl-orders">${Number(m.totalOrders).toLocaleString()} order${Number(m.totalOrders) === 1 ? '' : 's'}</div>
         <div class="m-total">${money(m.totalGmv)}</div>
         <div class="bl-mini">${blCh('grab', m.billableGrabOrders, m.billableGrabGmv)}${blCh('fp', m.billableFpOrders, m.billableFpGmv)}</div></div>
     </div>`).join('');
@@ -3392,7 +3391,7 @@ function renderBilling(d) {
   $('bl-body').innerHTML = `
     <div class="progress-card" style="display:block">
       <span class="bl-cap">Site total · ${esc(label)} · billable</span>
-      <div class="bl-big">${t.totalOrders.toLocaleString()} orders · ${money(t.totalGmv)}</div>
+      <div class="bl-big">${Number(t.totalOrders).toLocaleString()} orders · ${money(t.totalGmv)}</div>
       <div class="bl-mini bl-split">${blUnit(`<img src="${CH_META.grab.icon}" alt="">`, 'Grab', t.billableGrabOrders, t.billableGrabGmv)} ${blUnit(`<img src="${CH_META.fp.icon}" alt="">`, 'foodpanda', t.billableFpOrders, t.billableFpGmv)} ${blUnit(`<i class="bl-man">${ic('hand')}</i>`, 'Manual', handOrders, handGmv)}</div>
     </div>
     <input class="search-input" id="bl-search" placeholder="Filter merchants…" value="${esc(bl.q)}" style="margin-top:14px">
