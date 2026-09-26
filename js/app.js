@@ -63,35 +63,42 @@ async function api(path, opts) {
   o.headers = { ...(o.headers || {}) };
   if (state.token && !isLoginCall(path, o)) o.headers.Authorization = `Bearer ${state.token}`;
   if (CONFIG.demo) return DEMO.fetch(path, o);   // preview build: canned, offline
+  const sent = state.token;
   const r = await fetch(`${CONFIG.apiBase}${path}`, o);
   if (r.status === 401) {
-    setSession('');
-    if (state.staff) {
-      // The PIN buffer still held the last login's four digits: the expired
-      // screen showed four filled dots and ONE key press re-sent the old PIN
-      // (review 25 Sep, #1). Start the pad empty.
-      // Remember whose round this was: the same person back on the same site
-      // and business day resumes it instead of starting over (review #2).
-      if (!state.reauth) {
-        const v = document.querySelector('.view:not(.hidden)');
-        state.reauth = { staffId: state.staff.id, siteId: state.site && state.site.id,
-          salesDate: state.salesDate, view: v ? v.id : '' };
-      }
-      state.pin = '';
-      state.pinFirst = '';
-      state.pinMode = 'verify';
-      paintPin();
-      paintPinTitle();
-      $('pin-error').classList.add('hidden');
-      toast('Session expired — enter your PIN again');
-      loginStep('pin');
-      show('view-login');
-    }
-    const err = new Error('session expired');
-    err.expired = true;          // callers that toast their own failure stay quiet
-    throw err;
+    // A slow request that left with the OLD token can answer 401 after the
+    // person has already entered their PIN again: the new session stands.
+    if (!(sent && state.token && sent !== state.token)) sessionExpired();
+    throw expiredError();
   }
   return r;
+}
+function expiredError() {
+  const err = new Error('session expired');
+  err.expired = true;            // callers that toast their own failure stay quiet
+  return err;
+}
+/* The session is gone: drop the token and send the person to an EMPTY PIN pad
+   (the buffer still held the last login's digits and one key press re-sent
+   them — review 25 Sep, #1), remembering whose round this was so the same
+   person on the same site and business day resumes it (#2). */
+function sessionExpired() {
+  setSession('');
+  if (!state.staff) return;
+  if (!state.reauth) {
+    const v = document.querySelector('.view:not(.hidden)');
+    state.reauth = { staffId: state.staff.id, siteId: state.site && state.site.id,
+      salesDate: state.salesDate, view: v ? v.id : '' };
+  }
+  state.pin = '';
+  state.pinFirst = '';
+  state.pinMode = 'verify';
+  paintPin();
+  paintPinTitle();
+  $('pin-error').classList.add('hidden');
+  toast('Session expired — enter your PIN again');
+  loginStep('pin');
+  show('view-login');
 }
 /* FastAPI answers a validation error (422) with detail as a LIST of { loc, msg };
    every other error with a string. Either way staff read words, never
@@ -128,6 +135,12 @@ async function loadCatalog() {
     // a token it no longer accepts with the PUBLIC shape (no merchant book) rather
     // than 401 — a leftover token is dropped here too.
     const full = sent && Array.isArray(raw.merchants);
+    if (sent && !full && state.staff && !CONFIG.demo) {
+      // logged in, yet the public shape: the server no longer accepts this
+      // token — that is an expired session, not a site without merchants
+      sessionExpired();
+      throw expiredError();
+    }
     if (state.token && !full && !state.staff) setSession('');
     DATA = {
       full,                              // false = pre-login shape, merchant book not included
@@ -147,9 +160,11 @@ async function loadCatalog() {
     renderSites();
     return true;
   } catch (e) {
-    $('site-grid').innerHTML = `<p class="ab-note">⚠ Could not load the site list (${esc(e.message)}).</p>
-      <button class="btn-primary" id="btn-catalog-retry" style="margin-top:10px">Try again</button>`;
-    $('btn-catalog-retry').onclick = () => loadCatalog().catch(() => {});
+    if (!e.expired) {                     // an expired session is the PIN pad's business, not the site list's
+      $('site-grid').innerHTML = `<p class="ab-note">⚠ Could not load the site list (${esc(e.message)}).</p>
+        <button class="btn-primary" id="btn-catalog-retry" style="margin-top:10px">Try again</button>`;
+      $('btn-catalog-retry').onclick = () => loadCatalog().catch(() => {});
+    }
     throw e;                              // enterApp() must know; the boot call ignores it
   }
 }
@@ -869,6 +884,7 @@ async function retryMerchants() {
     renderChecklist();
     hydrateToday();
   } catch (e) {
+    if (e.expired) return;
     state.catalogError = e.message;
     renderChecklist();
     toast(`⚠ Still could not load the merchant list (${e.message})`);
@@ -913,6 +929,7 @@ async function enterApp() {
   if (!DATA.full && !CONFIG.demo) {
     try { await loadMerchantBook(); }
     catch (e) {
+      if (e.expired) return;                  // on the PIN pad already; the re-login enters the app again
       state.catalogError = e.message;
       toast(`⚠ Could not load the merchant list (${e.message})`);
     }
