@@ -2090,17 +2090,20 @@ function wireChannel(card, ch) {
     const raw = inp.value.trim();
     const n = Number(raw);
     const invalid = raw !== '' && (!isFinite(n) || n < 0);
+    // An emptied field is not an edit: it hands the field back to the AI. Left
+    // "edited", the next reading was displayed (value falls back to the AI
+    // figure) but never adopted, and Save stayed locked (review 25 Sep, #11).
     if (inp.dataset.f === 'orders') {
       val.invalidOrders = invalid;
-      if (!invalid) { val.finalOrders = raw === '' ? undefined : Math.round(n); val.editedOrders = true; }
+      if (!invalid) { val.finalOrders = raw === '' ? undefined : Math.round(n); val.editedOrders = raw !== ''; }
     } else {
       val.invalidGmv = invalid;
-      if (!invalid) { val.finalGmv = raw === '' ? undefined : n; val.editedGmv = true; }
+      if (!invalid) { val.finalGmv = raw === '' ? undefined : n; val.editedGmv = raw !== ''; }
     }
     val.edited = true;
     val._dirty = true;                 // baseline "update & save" tracking
     inp.closest('.rf').classList.toggle('bad', invalid);
-    if (!invalid) inp.closest('.rf').classList.add('edited');
+    if (!invalid) inp.closest('.rf').classList.toggle('edited', raw !== '');
     updateSaveBtn();
   });
   const camBtn = card.querySelector('.photo-slot.cam-btn');
@@ -2266,10 +2269,11 @@ function runExtraction(ctx, ch, jpeg) {     // ctx frozen when the picker opened
       return;
     }
     const val = { ...prev, ...patch, photoUrl: jpeg, pendingAI: false };
-    // Respect anything the staff member typed while the read was in flight.
-    if (prev.editedOrders) val.finalOrders = prev.finalOrders;
+    // Respect anything the staff member typed while the read was in flight —
+    // a value, not an emptied field.
+    if (prev.editedOrders && prev.finalOrders !== undefined) val.finalOrders = prev.finalOrders;
     else { val.finalOrders = patch.orders; val.editedOrders = false; }
-    if (prev.editedGmv) val.finalGmv = prev.finalGmv;
+    if (prev.editedGmv && prev.finalGmv !== undefined) val.finalGmv = prev.finalGmv;
     else { val.finalGmv = patch.gmv; val.editedGmv = false; }
     val.aiOrders = patch.orders; val.aiGmv = patch.gmv;
     writeVal(ctx, ch, val);
