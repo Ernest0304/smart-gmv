@@ -886,6 +886,7 @@ async function enterApp() {
   state.baselines = {};
   state.baselineMeta = {};
   state.history = {};
+  state.amendments = [];        // the previous site's licensee corrections must not follow (review #14)
   rv.loaded = false;
   rv.unmatched = {};
   state.hydrateError = null;
