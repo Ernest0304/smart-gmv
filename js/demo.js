@@ -112,7 +112,7 @@ const DEMO = (() => {
     if (p === '/api/catalog') {
       return reply({ sites: [{ id: 'S1', name: 'Tampines (demo)' }],
         staff: [{ id: 'st-demo', name: 'Demo User', homeSites: ['S1'],
-                  needsPin: false, partTime: false, reports: true }],
+                  needsPin: false, partTimer: false, reports: true }],
         customers: [], merchants: MERCHANTS });
     }
     /* Every staff endpoint must be answered here, not only the ones the happy

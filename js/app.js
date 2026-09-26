@@ -75,7 +75,7 @@ async function api(path, opts) {
 /* Photo proxy is an <img src>, so it cannot send a header — the token rides
    as a query param there (same signature check server-side). */
 function photoUrl(id) {
-  return `${CONFIG.apiBase}/api/photo/${id}?t=${encodeURIComponent(state.token || '')}`;
+  return `${CONFIG.apiBase}/api/photo/${encodeURIComponent(id)}?t=${encodeURIComponent(state.token || '')}`;
 }
 
 async function loadCatalog() {
@@ -475,7 +475,7 @@ function renderSites() {
   $('site-grid').innerHTML = DATA.sites.map((s) => {
     const n = s.id === CATERING_SITE
       ? (DATA.merchants.length ? DATA.merchants.filter((m) => m.catering && !m.disabled).length : (s.merchantCount || 0))
-      : (DATA.merchants.length ? DATA.merchants.filter((m) => m.site === s.id).length : (s.merchantCount || 0));
+      : (DATA.merchants.length ? DATA.merchants.filter((m) => m.site === s.id && !m.disabled).length : (s.merchantCount || 0));
     return `<button class="site-btn" data-site="${esc(s.id)}">${esc(s.name)}<small>${esc(s.id)} · ${n} merchants</small></button>`;
   }).join('');
   $('site-grid').querySelectorAll('.site-btn').forEach((b) => b.onclick = () => {
@@ -1994,11 +1994,11 @@ function extrasHTML(ch, val, rec) {
   const collapsed = list.length > 3 && !rec.expandedExtras?.[ch];
   const rowHTML = (e, i) => {
     const thumb = e.thumbUrl || e.photoUrl
-      || (e.photoId ? photoUrl(esc(e.photoId)) : null);
+      || (e.photoId ? photoUrl(e.photoId) : null);
     const stateIcon = e.pendingAI ? '<span class="spinner sm"></span>'
       : e.dup ? ic('alert') : e.conf === 'high' && !e.edited ? '✓' : e.edited ? '✎' : ic('alert');
     return `<div class="extra-row ${e.edited ? 'edited' : ''} ${e.dup ? 'dup' : ''}">
-      ${thumb ? `<img class="x-thumb" src="${thumb}" alt="order ${i + 1}">` : '<span class="x-thumb file">' + ic('file') + '</span>'}
+      ${thumb ? `<img class="x-thumb" src="${esc(thumb)}" alt="order ${i + 1}">` : '<span class="x-thumb file">' + ic('file') + '</span>'}
       <span class="x-meta">#${i + 1}${e.orderRef ? ' · ' + esc(e.orderRef) : ''}<em>1 order</em></span>
       <span class="x-state">${stateIcon}</span>
       <input class="x-amt" inputmode="decimal" placeholder="0.00" data-x="${i}"
@@ -2067,7 +2067,7 @@ function channelBodyHTML(ch, val, base, mode) {
         </div>
         <div class="photo-btns"><button class="retake">Retake</button><button class="ch-remove" title="Remove photo and readings">✕ Remove</button></div></div>`
     : val.photoLink && val.photoId
-    ? `<div class="photo-row"><img class="thumb tap" src="${photoUrl(esc(val.photoId))}" alt="evidence" title="Tap to view or mark the correct number">
+    ? `<div class="photo-row"><img class="thumb tap" src="${esc(photoUrl(val.photoId))}" alt="evidence" title="Tap to view or mark the correct number">
         <div class="ai-note-col">
           <span class="screen-note">${ic('archive')} Photo on record — saved to Drive earlier.</span>
           <span class="tap-hint">${ic('hand')} Tap to view or mark the correct number</span>
@@ -2905,12 +2905,13 @@ async function saveAmend(mid, offset, from) {
     rec.saveError = null;
     rec.amendedBy = state.staff.name;
     rec.auditEdited = rec.auditEdited || !!resp.edited;
-    rec.billingFlag = resp.billing || '';
+    const bflag = typeof resp.billing === 'string' ? resp.billing : (resp.billing && resp.billing.flag) || '';
+    rec.billingFlag = bflag;
     adoptLinks(rec, resp || {});
     if (rec.status !== 'Operated') rec.channels = {};
     rec._savedSig = recSig(rec);
     toast(`${m.brand} — ${dayLabel(offset)} saved ✓, audit logged`
-      + (resp.billing === 'NO_BASELINE' ? ' · ⚠ no opening GMV that day' : ''));
+      + (bflag === 'NO_BASELINE' ? ' · ⚠ no opening GMV that day' : ''));
     if (from === 'review') { renderReview(); show('view-review'); }
     else { backToChecklist(); }
   } catch (e) {
@@ -3121,7 +3122,7 @@ function openSiteSwitch() {
   $('site-switch-grid').innerHTML = DATA.sites.map((st) => {
     const n = st.id === CATERING_SITE
       ? DATA.merchants.filter((m) => m.catering && !m.disabled).length
-      : DATA.merchants.filter((m) => m.site === st.id).length;
+      : DATA.merchants.filter((m) => m.site === st.id && !m.disabled).length;
     const here = state.site && st.id === state.site.id;
     return `<button class="site-btn" data-site="${esc(st.id)}" ${here ? 'disabled style="opacity:.45"' : ''}>${esc(st.name)}<small>${esc(st.id)} · ${here ? 'you are here' : n + ' merchants'}</small></button>`;
   }).join('');
