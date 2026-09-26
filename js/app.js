@@ -22,14 +22,14 @@ function setSession(tok, staffId) {
   try {
     if (tok) sessionStorage.setItem(SESSION_KEY, JSON.stringify({ tok, staffId }));
     else sessionStorage.removeItem(SESSION_KEY);
-  } catch (e) { /* private mode: session lives in memory only */ }
+  } catch { /* private mode: session lives in memory only */ }
   state.token = tok || '';
 }
 function loadSession() {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY);
     return raw ? JSON.parse(raw) : null;
-  } catch (e) { return null; }
+  } catch { return null; }
 }
 /* The login calls prove identity with the PIN itself; a bearer token left over
    from an expired session has no business riding along (review 25 Sep, #7). */
@@ -137,14 +137,14 @@ function readRecent() {
   try {
     const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
     return Array.isArray(raw) ? raw.filter((e) => e && e.id && e.site) : [];
-  } catch (e) {
+  } catch {
     return [];                       // private mode / storage blocked
   }
 }
 function writeRecent(list) {
   try {
     localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX)));
-  } catch (e) { /* nothing to do — the feature is a convenience */ }
+  } catch { /* nothing to do — the feature is a convenience */ }
 }
 function rememberUser() {
   if (!state.staff || !state.site) return;
@@ -987,7 +987,7 @@ async function hydrateTodayInner(live = false) {
     try {   // pending tenant amendments for this facility — never blocks the round
       const ra = await api(`/api/amendments?site=${state.site.id}`);
       state.amendments = ra.ok ? ((await ra.json()).amendments || []) : [];
-    } catch (e) { state.amendments = []; }
+    } catch { state.amendments = []; }
     const arrived = [];
     records.forEach((sr) => {
       const m = state.merchants.find((x) => x.kitchen === sr.kitchen && x.brand === sr.brand);
@@ -1085,7 +1085,7 @@ async function liveTick() {
     const { version } = await r.json();
     if (liveVer === null) liveVer = version;
     else if (version !== liveVer) { liveVer = version; await hydrateToday(true); }
-  } catch (e) { /* offline for a moment — next tick */ }
+  } catch { /* offline for a moment — next tick */ }
   finally { liveBusy = false; }
 }
 function liveStart() { liveStop(); liveTimer = setInterval(liveTick, LIVE_MS); }
@@ -2788,7 +2788,7 @@ function backToChecklist() {          // the one way back to tonight's round
    opening round: Review edits, inbox approvals and catering return to where
    they came from, as before. */
 const AUTONEXT_KEY = 'smartgmv.autonext';
-function autoNextOn() { try { return localStorage.getItem(AUTONEXT_KEY) !== 'off'; } catch (e) { return true; } }
+function autoNextOn() { try { return localStorage.getItem(AUTONEXT_KEY) !== 'off'; } catch { return true; } }
 function renderAutoNext() {
   const b = $('autonext-toggle');
   const on = autoNextOn();
@@ -2797,7 +2797,7 @@ function renderAutoNext() {
   b.querySelector('span').textContent = on ? 'Auto-next after save' : 'Auto-next after save · off';
 }
 $('autonext-toggle').onclick = () => {
-  try { localStorage.setItem(AUTONEXT_KEY, autoNextOn() ? 'off' : 'on'); } catch (e) {}
+  try { localStorage.setItem(AUTONEXT_KEY, autoNextOn() ? 'off' : 'on'); } catch {}
   renderAutoNext();
 };
 function nextWaiting(mid, mode) {

@@ -101,7 +101,7 @@ const DEMO = (() => {
       flags: [{ date: today, kitchen: 'K7', brand: 'Bao Department', flag: 'CHECK', edited: true }] };
   }
 
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
   const reply = (body, status = 200) =>
     ({ ok: status < 400, status, json: async () => body });
 
