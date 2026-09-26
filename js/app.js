@@ -962,11 +962,14 @@ const photoIdOf = (link) => (String(link || '').match(/\/d\/([A-Za-z0-9_-]{20,})
    whatever path made the change — so the live refresh can tell a saved record
    that is being edited from one that is not (review 25 Sep, #12). */
 function recSig(r) {
-  return JSON.stringify([r.status, Object.keys(r.channels || {}).sort().map((ch) => {
-    const v = r.channels[ch] || {};
-    return [ch, v.finalOrders ?? null, v.finalGmv ?? null, !!v.noSales,
-      v.photoLink || (v.photoUrl ? 'local' : ''),
-      (v.extras || []).map((e) => [e.gmv ?? null, e.photoLink || (e.photoUrl ? 'local' : '')])];
+  // photos count by generation (bumped on every shot/retake/removal), not by
+  // how they are held — a base64 copy turning into a Drive link after a save
+  // is not a change; a non-Operated record carries no channels once saved
+  const chans = r.status === 'Operated' ? (r.channels || {}) : {};
+  return JSON.stringify([r.status, Object.keys(chans).sort().map((ch) => {
+    const v = chans[ch] || {};
+    return [ch, v.finalOrders ?? null, v.finalGmv ?? null, !!v.noSales, v.gen || 0,
+      (v.extras || []).map((e) => [e.gmv ?? null, !!(e.photoLink || e.photoUrl)])];
   })]);
 }
 
@@ -1022,11 +1025,11 @@ function localBusy(m, baseline) {
       && !$('view-capture').classList.contains('hidden')) return true;
   if (baseline) {
     const bm = state.baselineMeta[m.id] || {};
-    return !!(bm.inFlight || bm.error || (!bm.saved && baselineHasShots(m)));
+    return !!(bm.inFlight || bm.error || (!bm.saved && baselineHasShots(m)) || (bm.saved && baselineDirty(m.id)));
   }
   const r = state.records[m.id];
   return !!(r && (r.inFlight || r.saveError || r.draft || (!r.saved && recHasChannelData(r))
-    || (r.saved && r._savedSig !== undefined && recSig(r) !== r._savedSig)));   // saved, then edited here
+    || editedSinceSave(r)));                 // saved, then edited here
 }
 async function hydrateTodayInner(live = false) {
   // the catering entry is not a daily per-site round — nothing to rehydrate
@@ -2943,7 +2946,7 @@ async function saveRecord(mid) {
   rec.saveError = null;
   refreshAfterSave(mid);
 
-  const finish = (err, resp) => {
+  const finish = (err, resp, sentSig) => {
     rec.inFlight = false;
     if (err) {
       rec.saveError = err;
@@ -2956,7 +2959,7 @@ async function saveRecord(mid) {
       adoptLinks(rec, resp || {});
       noteVersion(resp);
       if (rec.status !== 'Operated') rec.channels = {};
-      rec._savedSig = recSig(rec);
+      rec._savedSig = sentSig;             // edits made while the save was in flight stay "unsaved"
       if (resp && resp.billing === 'NO_BASELINE') {
         toast(`${m.brand} saved — ⚠ no opening GMV this morning · flagged for supervisor`);
       }
@@ -2967,7 +2970,9 @@ async function saveRecord(mid) {
   };
 
   try {
-    finish(null, await postRecord(buildPayload(m, rec, state.salesDate)));
+    const payload = buildPayload(m, rec, state.salesDate);
+    const sentSig = recSig(rec);
+    finish(null, await postRecord(payload), sentSig);
   } catch (e) {
     finish(e.name === 'AbortError' ? 'timed out after 90s' : e.message, null);
   }
@@ -2989,7 +2994,9 @@ async function saveAmend(mid, offset, from) {
   rec.saveError = null;
   updateSaveBtn();
   try {
-    const resp = await postRecord(buildPayload(m, rec, date));
+    const payload = buildPayload(m, rec, date);
+    const sentSig = recSig(rec);           // what goes up; edits during the request stay unsaved
+    const resp = await postRecord(payload);
     rec.inFlight = false;
     rec.saved = true;
     rec.serverSaved = true;
@@ -3000,7 +3007,7 @@ async function saveAmend(mid, offset, from) {
     rec.billingFlag = bflag;
     adoptLinks(rec, resp || {});
     if (rec.status !== 'Operated') rec.channels = {};
-    rec._savedSig = recSig(rec);
+    rec._savedSig = sentSig;
     toast(`${m.brand} — ${dayLabel(offset)} saved ✓, audit logged`
       + (bflag === 'NO_BASELINE' ? ' · ⚠ no opening GMV that day' : ''));
     if (from === 'review') { renderReview(); show('view-review'); }
@@ -3186,11 +3193,25 @@ function askConfirm(title, detail, yesLabel, onYes) {
   $('convert-cancel').onclick = () => $('convert-overlay').classList.add('hidden');
 }
 
+const editedSinceSave = (r) => !!(r && r.saved && r._savedSig !== undefined && recSig(r) !== r._savedSig);
 function logoutRisks() {
   const list = unsavedRecords();
   state.merchants.filter((m) => !m.disabled).forEach((m) => {
     const r = state.records[m.id];
-    if (r && r.draft && !r.saved && !r.inFlight && !saveFailed(r)) list.push({ m, kind: 'draft' });
+    if (r && !r.inFlight && !saveFailed(r)) {
+      if (r.draft && !r.saved) list.push({ m, kind: 'draft' });
+      // typed but never saved, or saved and changed since — both vanished
+      // silently on logout, site switch or a new day
+      else if ((!r.saved && recHasChannelData(r)) || editedSinceSave(r)) list.push({ m, kind: 'record' });
+    }
+    const bm = state.baselineMeta[m.id];
+    if (bm && bm.saved && !bm.inFlight && !bm.error && baselineDirty(m.id)) list.push({ m, kind: 'baseline' });
+    Object.entries(state.history).forEach(([off, store]) => {   // Review edits not written back yet
+      const h = store && store[m.id];
+      if (h && !h.inFlight && (saveFailed(h) || (!h.saved && recHasChannelData(h)) || editedSinceSave(h))) {
+        list.push({ m, kind: 'record', day: dayLabel(Number(off)) });
+      }
+    });
   });
   return list;
 }
@@ -3203,7 +3224,7 @@ function showGuard(risks, dangerLabel, cancelLabel, proceed) {
   $('guard-danger-label').textContent = dangerLabel;
   $('guard-cancel').textContent = cancelLabel;
   $('guard-list').textContent = risks.map((u) =>
-    `${u.m.kitchen} ${u.m.brand}${u.kind === 'baseline' ? ' (opening GMV)' : u.kind === 'draft' ? ' (not confirmed yet — open it and confirm)' : ''}`
+    `${u.m.kitchen} ${u.m.brand}${u.day ? ' · ' + u.day : ''}${u.kind === 'baseline' ? ' (opening GMV)' : u.kind === 'draft' ? ' (not confirmed yet — open it and confirm)' : ''}`
   ).join('  ·  ');
   $('guard-overlay').classList.remove('hidden');
 }
