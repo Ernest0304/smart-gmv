@@ -2547,6 +2547,11 @@ function applyMark(kind) {
   const value = Number(raw);
   if (!pendingBox || raw === '' || Number.isNaN(value)) { $('vc-input').focus(); return; }
   const val = channelValue(ch);
+  if ((val.marks || []).length >= 20) {        // the server keeps at most 20 marks per channel
+    toast('Up to 20 marks per photo — remove the photo and retake it if more are needed');
+    $('viewer-choice').classList.add('hidden');
+    return;
+  }
   if (kind === 'orders') { val.finalOrders = Math.round(value); val.editedOrders = true; }
   else { val.finalGmv = value; val.editedGmv = true; }
   val.edited = true;
