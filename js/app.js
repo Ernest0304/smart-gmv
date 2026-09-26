@@ -1026,7 +1026,7 @@ async function hydrateTodayInner(live = false) {
     } catch { state.amendments = []; }
     const arrived = [];
     records.forEach((sr) => {
-      const m = state.merchants.find((x) => x.kitchen === sr.kitchen && x.brand === sr.brand);
+      const m = merchantForRow(sr);
       if (!m) return;
       const baseline = sr.recordType === 'baseline';
       if (live) {
@@ -1554,7 +1554,7 @@ async function loadHistory(force) {
     (d.records || []).forEach((sr) => {
       const off = offsetForDate(sr.salesDate);
       if (off < 1 || off > 6) return;
-      const m = state.merchants.find((x) => x.kitchen === sr.kitchen && x.brand === sr.brand);
+      const m = merchantForRow(sr);
       if (!m) { (rv.unmatched[off] = rv.unmatched[off] || []).push(sr); return; }
       if (sr.recordType === 'baseline') {
         // store alongside the day's records; '_baselines' can never collide
@@ -1587,7 +1587,7 @@ async function loadDay(offset) {
     state.history[offset] = {};
     rv.unmatched[offset] = [];
     (d.records || []).forEach((sr) => {
-      const m = state.merchants.find((x) => x.kitchen === sr.kitchen && x.brand === sr.brand);
+      const m = merchantForRow(sr);
       if (!m) { rv.unmatched[offset].push(sr); return; }
       if (sr.recordType === 'baseline') {
         (state.history[offset]._baselines = state.history[offset]._baselines || {})[m.id] = sr;
@@ -1732,6 +1732,18 @@ const CH_META = {
 const chName = (ch) => (CH_META[ch] || { name: ch }).name;
 
 function findMerchant(mid) { return state.merchants.find((x) => x.id === mid); }
+/* A server row names its merchant by kitchen + brand. When the same brand sits
+   twice in one kitchen (two contracts), the row's SFDC id decides — compared on
+   the first 15 characters, since ids come as 15 or 18 digits (Oct 2026). A row
+   billed to a renewal id matches neither anchor and falls back to the first. */
+function merchantForRow(sr) {
+  const same = state.merchants.filter((x) => x.kitchen === sr.kitchen && x.brand === sr.brand);
+  if (same.length > 1 && sr.sfdcId) {
+    const exact = same.find((x) => String(x.sfdcId || '').slice(0, 15) === String(sr.sfdcId).slice(0, 15));
+    if (exact) return exact;
+  }
+  return same[0];
+}
 
 /* ---------- Tenant amendment inbox (portal, 1 Sep) ----------
    A licensee sent a new photo for a day already recorded. Staff open it in the
