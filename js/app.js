@@ -93,6 +93,15 @@ async function api(path, opts) {
   }
   return r;
 }
+/* FastAPI answers a validation error (422) with detail as a LIST of { loc, msg };
+   every other error with a string. Either way staff read words, never
+   "[object Object]" (ported 27 Sep from the parallel review branch). */
+function detailText(d, fallback) {
+  const det = d && d.detail;
+  if (Array.isArray(det)) return det.map((x) => (x && x.msg) || JSON.stringify(x)).join('; ');
+  if (det && typeof det === 'object') return JSON.stringify(det);
+  return det || fallback;
+}
 /* Photo proxy is an <img src>, so it cannot send a header — the token rides
    as a query param there (same signature check server-side). */
 function photoUrl(id) {
@@ -669,7 +678,7 @@ async function submitRegistration(allowDuplicate) {
       $('dup-cancel').onclick = () => $('dup-overlay').classList.add('hidden');
       return;
     }
-    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     // PIN was chosen in the form and is already on the server — straight in.
     DATA.staff.push(d.staff);
     if (!d.token) throw new Error('The app was just updated — log in once more');
@@ -774,7 +783,7 @@ async function claimPin() {
       pinFail('A PIN was already set for this name — enter it, or ask the supervisor to reset it');
       return;
     }
-    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     if (!d.token) throw new Error('The app was just updated — log in once more');
     setSession(d.token, d.staff && d.staff.id);
     state.pin = '';                    // the session replaces the PIN: never keep it in memory
@@ -816,7 +825,7 @@ async function verifyPin() {
       return;
     }
     if (r.status === 403) { pinFail('Wrong PIN — try again'); return; }
-    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     // Store the session BEFORE entering the app: enterApp() immediately reads
     // today's records, and without the token that read is refused (this line
     // was missing on 3 Aug — a fresh PIN login landed on "session expired").
@@ -1405,7 +1414,7 @@ $('pc-submit').onclick = async () => {
       body: JSON.stringify({ staffId: state.staff.id, oldPin: $('pc-old').value,
         newPin: $('pc-new').value }) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     $('pinchange-overlay').classList.add('hidden');
     toast('PIN changed ✓ — use the new PIN from your next login');
   } catch (e) {
@@ -1455,7 +1464,7 @@ function renderBrands() {
         body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, ...body }),
       });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     } catch (e) {
       revert();
       toast(`❗ Change NOT saved — ${e.message}`);
@@ -1479,7 +1488,7 @@ function renderBrands() {
       const r = await api('/api/merchants', { method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, [ch]: next }) });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(detailText(await r.json().catch(() => ({})), `HTTP ${r.status}`));
       toast(`${m.brand}: ${ch === 'grab' ? 'GrabFood' : ch === 'fp' ? 'foodpanda' : 'Catering'} ${next ? 'on' : 'off'} ✓`);
     } catch (e) {
       m[key] = src2[key] = !next;
@@ -1533,7 +1542,7 @@ async function loadHistory(force) {
     const r = await api(`/api/records?site=${state.site.id}`
       + `&from=${dateForOffset(6)}&to=${dateForOffset(1)}`);
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     for (let o = 1; o <= 6; o++) state.history[o] = {};
     rv.unmatched = {};
     (d.records || []).forEach((sr) => {
@@ -1568,7 +1577,7 @@ async function loadDay(offset) {
     const day = dateForOffset(offset);
     const r = await api(`/api/records?site=${state.site.id}&from=${day}&to=${day}`);
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     state.history[offset] = {};
     rv.unmatched[offset] = [];
     (d.records || []).forEach((sr) => {
@@ -1793,7 +1802,7 @@ async function decideAmend(decision, extra) {
     const r = await api(`/api/amendments/${encodeURIComponent(a.id)}/decide`, {
       method: 'POST', body: JSON.stringify({ decision, staffName: state.staff.name, staffId: state.staff.id, ...extra }) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     state.amendments = (state.amendments || []).filter((x) => x.id !== a.id);
     if (cur.offset > 0 && state.history[cur.offset]) delete state.history[cur.offset]._loaded;   // re-read the day next time
     const rec = recordsFor(cur.offset)[cur.m.id];
@@ -2346,7 +2355,7 @@ function runExtraction(ctx, ch, jpeg) {     // ctx frozen when the picker opened
       photoKind: isBaseline ? kindBase.replace(' Photo', ' Baseline Photo') : kindBase }),
   })
     .then(async (r) => {
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(detailText(await r.json().catch(() => ({})), `HTTP ${r.status}`));
       return r.json();
     })
     .then((d) => {
@@ -2388,7 +2397,7 @@ function runExtraExtraction(ctx, ch, entry) {
       photoKind: ch === 'grab' ? 'Grab Extra' : 'FP Extra' }),
   })
     .then(async (r) => {
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(detailText(await r.json().catch(() => ({})), `HTTP ${r.status}`));
       return r.json();
     })
     .then((d) => apply({ aiGmv: d.gmv ?? null, conf: d.confidence,
@@ -2857,7 +2866,7 @@ async function postRecord(payload, path = '/api/records') {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload), signal: ctrl.signal });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     return d;
   } finally { clearTimeout(t); }
 }
@@ -3251,7 +3260,7 @@ function renderCateringPicker(q) {
       const r = await api('/api/merchants', { method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, catering: next }) });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(detailText(await r.json().catch(() => ({})), `HTTP ${r.status}`));
       m.catering = next;
       state.merchants = siteMerchants(state.site.id);
       renderCateringPicker($('ab-search').value);
@@ -3329,7 +3338,7 @@ $('ab-create').onclick = async () => {
                            brand, sfdcId: ab.customer.oppId, overnight }),
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     DATA.merchants.push({
       site: d.merchant.facility, kitchen: d.merchant.kitchen, brand: d.merchant.brand,
       sfdcId: d.merchant.sfdcId, overnight: d.merchant.overnight || undefined,
@@ -3485,7 +3494,7 @@ async function loadBilling() {
       $('bl-body').innerHTML = `<p class="ab-note">${ic('lock')} ${esc(d.detail || 'Sales reports need permission from the manager.')}</p>`;
       return;
     }
-    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     renderBilling(d);
   } catch (e) {
     $('bl-body').innerHTML = `<p class="ab-note">${ic('alert')} Could not load the summary (${esc(e.message)}).</p>
@@ -3714,7 +3723,7 @@ async function readDinein(dataUrl) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: di.photo, site: state.site.id }) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     di.read = d;
     di.rows = d.rows.map((x) => ({ ...x }));
     toast(`${d.monthLabel} read — ${d.rows.length} brands matched`);
@@ -3746,7 +3755,7 @@ async function saveDinein() {
           promoOrders: x.promoOrders ?? null, promoGmv: x.promoGmv ?? null })),
       }) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
     const n = (d.written || []).length + (d.created || []).length;
     toast(`${n} brand${n === 1 ? '' : 's'} saved for ${d.salesDate} ✓`
       + ((d.skipped || []).length ? ` · ${d.skipped.length} skipped` : ''));
