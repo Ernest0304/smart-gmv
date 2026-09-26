@@ -31,31 +31,31 @@
       <!-- Whoever used this device last (device-local, never a PIN) — one tap
            to their PIN screen. The site grid stays right below it. -->
       <div id="resume-wrap"></div>
-      <label class="field-label">Select your site</label>
-      <div class="site-grid" id="site-grid"></div>
+      <label class="field-label" id="lbl-site">Select your site</label>
+      <div class="site-grid" id="site-grid" role="group" aria-labelledby="lbl-site"></div>
     </div>
     <div class="login-step hidden" id="login-step-staff">
       <button class="back-link" data-back="site"><svg class="ic sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg> Change site</button>
       <div id="staff-resume"></div>
-      <label class="field-label">Who are you?</label>
+      <label class="field-label" for="staff-search">Who are you?</label>
       <input class="search-input" id="staff-search" placeholder="Type your name to find it faster" autocomplete="off" style="margin-bottom:10px">
       <div class="staff-list" id="staff-list"></div>
     </div>
     <div class="login-step hidden" id="login-step-register">
       <button class="back-link" data-back="staff"><svg class="ic sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg> Back to the list</button>
-      <label class="field-label">Register yourself</label>
+      <label class="field-label" for="reg-name">Register yourself</label>
       <input class="search-input" id="reg-name" placeholder="Your full name" maxlength="60" autocomplete="name">
-      <label class="field-label" style="margin-top:14px">Home site (optional)</label>
+      <label class="field-label" for="reg-home" style="margin-top:14px">Home site (optional)</label>
       <select class="search-input" id="reg-home"></select>
-      <label class="field-label" style="margin-top:14px">Employment</label>
-      <div class="chip-row" id="reg-emp">
+      <label class="field-label" id="lbl-emp" style="margin-top:14px">Employment</label>
+      <div class="chip-row" id="reg-emp" role="group" aria-labelledby="lbl-emp">
         <button type="button" class="chip active" data-emp="part">Part-timer</button>
         <button type="button" class="chip" data-emp="full">Full-time staff</button>
       </div>
-      <label class="field-label" style="margin-top:14px">Create your 4-digit PIN</label>
+      <label class="field-label" for="reg-pin" style="margin-top:14px">Create your 4-digit PIN</label>
       <div class="reg-pin-row">
         <input class="search-input" id="reg-pin" type="password" inputmode="numeric" maxlength="4" placeholder="PIN" autocomplete="off">
-        <input class="search-input" id="reg-pin2" type="password" inputmode="numeric" maxlength="4" placeholder="Repeat PIN" autocomplete="off">
+        <input class="search-input" id="reg-pin2" type="password" inputmode="numeric" maxlength="4" placeholder="Repeat PIN" aria-label="Repeat PIN" autocomplete="off">
       </div>
       <p class="pin-error hidden" id="reg-pin-note">The two PINs don't match</p>
       <p class="ab-note">This PIN logs you in from now on — don't share it. Your name goes on every record you save.</p>
@@ -69,7 +69,7 @@
       <label class="field-label" id="pin-title">Enter your PIN</label>
       <p class="pin-sub hidden" id="pin-sub"></p>
       <div class="pin-dots" id="pin-dots"><i></i><i></i><i></i><i></i></div>
-      <div class="pin-pad" id="pin-pad"></div>
+      <div class="pin-pad" id="pin-pad" role="group" aria-labelledby="pin-title"></div>
       <p class="pin-error hidden" id="pin-error" role="alert">Wrong PIN — try again</p>
     </div>
   </div>
@@ -210,8 +210,8 @@
 
   <div class="capture-body" id="capture-body">
     <div class="status-row" id="status-row">
-      <label class="field-label">Kitchen status</label>
-      <div class="chip-row" id="status-chips"></div>
+      <label class="field-label" id="lbl-status">Kitchen status</label>
+      <div class="chip-row" id="status-chips" role="group" aria-labelledby="lbl-status"></div>
     </div>
     <div class="hidden" id="catering-date-row">
       <label class="field-label" for="cat-date">Sales date</label>
@@ -240,9 +240,9 @@
   <div class="capture-body">
     <div class="chip-row" id="bl-months"></div>
     <div class="bl-range hidden" id="bl-range">
-      <input type="date" class="search-input" id="bl-from">
+      <input type="date" class="search-input" id="bl-from" aria-label="From date">
       <span class="bl-arrow">→</span>
-      <input type="date" class="search-input" id="bl-to">
+      <input type="date" class="search-input" id="bl-to" aria-label="To date">
       <button class="chip active" id="bl-apply">Apply</button>
     </div>
     <div id="bl-body" style="margin-top:14px"></div>
@@ -275,7 +275,7 @@
   <div class="capture-body">
     <!-- Page 1: pick the kitchen (contracted customer) -->
     <div id="ab-step1">
-      <label class="field-label">1 · Which kitchen?</label>
+      <label class="field-label" for="ab-search">1 · Which kitchen?</label>
       <input class="search-input" id="ab-search" placeholder="Search company name…">
       <!-- source note: footnote-sized and centred so it reads as a caption under the field, not a warning -->
       <p class="src-note">This list comes from Salesforce. If a company name or kitchen number is wrong, correct the customer record in Salesforce.</p>
@@ -286,7 +286,7 @@
     <div id="ab-step2" class="hidden">
       <button class="back-link" id="ab-back1"><svg class="ic sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg> Change kitchen</button>
       <div class="ab-picked" id="ab-picked"></div>
-      <label class="field-label" style="margin-top:20px">2 · Brand name on the delivery platform</label>
+      <label class="field-label" for="ab-brand" style="margin-top:20px">2 · Brand name on the delivery platform</label>
       <input class="search-input" id="ab-brand" placeholder="e.g. DM Chicken">
       <p class="ab-note">Brand name can differ from the company's registered name — type it exactly as it appears on Grab / foodpanda.</p>
       <label class="ab-check">
@@ -325,12 +325,12 @@
 <div class="overlay hidden" id="pinchange-overlay">
   <div class="menu-sheet">
     <div class="guard-title"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Change my PIN</div>
-    <label class="field-label" style="margin-top:12px">Current PIN</label>
+    <label class="field-label" for="pc-old" style="margin-top:12px">Current PIN</label>
     <input class="search-input" id="pc-old" type="password" inputmode="numeric" maxlength="4" placeholder="4 digits" autocomplete="off">
-    <label class="field-label" style="margin-top:12px">New PIN — enter it twice</label>
+    <label class="field-label" for="pc-new" style="margin-top:12px">New PIN — enter it twice</label>
     <div class="reg-pin-row">
       <input class="search-input" id="pc-new" type="password" inputmode="numeric" maxlength="4" placeholder="New PIN" autocomplete="off">
-      <input class="search-input" id="pc-new2" type="password" inputmode="numeric" maxlength="4" placeholder="Repeat new PIN" autocomplete="off">
+      <input class="search-input" id="pc-new2" type="password" inputmode="numeric" maxlength="4" placeholder="Repeat new PIN" aria-label="Repeat new PIN" autocomplete="off">
     </div>
     <p class="pin-error hidden" id="pc-note" role="alert"></p>
     <div class="save-bar" style="position:static;padding:14px 0 0;background:none">

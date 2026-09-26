@@ -3351,7 +3351,12 @@ loadCatalog().catch(() => {});          // a failure is painted on the site step
    the site and destroys every unsaved capture in memory. Trap pattern: one
    sentinel history entry; each back pop closes the topmost layer and re-arms.
    Leaving is still possible via browser UI; beforeunload guards unsaved work. */
-function closeTopLayer() {
+/* Esc closes the top sheet or viewer (desktop and paired keyboards). It never
+   leaves a screen — that stays the back button's job. */
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && closeTopOverlay()) e.preventDefault();
+});
+function closeTopOverlay() {
   const overlays = [
     ['viewer-overlay', 'viewer-close'], ['pinchange-overlay', 'pc-cancel'],
     ['guard-overlay', 'guard-cancel'], ['convert-overlay', 'convert-cancel'],
@@ -3370,6 +3375,10 @@ function closeTopLayer() {
       return true;
     }
   }
+  return false;
+}
+function closeTopLayer() {
+  if (closeTopOverlay()) return true;
   if (!$('view-capture').classList.contains('hidden')) { $('btn-capture-back').click(); return true; }
   if (!$('view-inbox').classList.contains('hidden')) { backToChecklist(); return true; }
   if (!$('view-review').classList.contains('hidden')) { $('btn-review-back').click(); return true; }
