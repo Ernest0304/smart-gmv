@@ -1499,7 +1499,7 @@ function renderBrands() {
     try {
       const r = await api('/api/merchants', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, ...body }),
+        body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, sfdcId: m.sfdcId || '', ...body }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(detailText(d, `HTTP ${r.status}`));
@@ -1525,7 +1525,7 @@ function renderBrands() {
     try {
       const r = await api('/api/merchants', { method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, [ch]: next }) });
+        body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, sfdcId: m.sfdcId || '', [ch]: next }) });
       if (!r.ok) throw new Error(detailText(await r.json().catch(() => ({})), `HTTP ${r.status}`));
       toast(`${m.brand}: ${ch === 'grab' ? 'GrabFood' : ch === 'fp' ? 'foodpanda' : 'Catering'} ${next ? 'on' : 'off'} ✓`);
     } catch (e) {
@@ -3349,7 +3349,7 @@ function renderCateringPicker(q) {
     try {
       const r = await api('/api/merchants', { method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, catering: next }) });
+        body: JSON.stringify({ facility: m.site, kitchen: m.kitchen, brand: m.brand, sfdcId: m.sfdcId || '', catering: next }) });
       if (!r.ok) throw new Error(detailText(await r.json().catch(() => ({})), `HTTP ${r.status}`));
       m.catering = next;
       state.merchants = siteMerchants(state.site.id);
