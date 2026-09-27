@@ -1798,7 +1798,7 @@ function openInbox() {
       <div class="ib-mid">${esc(a.salesDate)} · ${esc(CH_META[a.channel] ? CH_META[a.channel].name : a.channel)}
         · AI read ${a.aiOrders === '' || a.aiOrders == null ? '—' : esc(String(a.aiOrders)) + ' orders'}${a.aiGmv === '' || a.aiGmv == null ? '' : ' · ' + money(Number(a.aiGmv))}
         ${a.aiConfidence ? `<span class="tag ${a.aiConfidence === 'high' ? 'h24' : 'amend'}">${esc(a.aiConfidence)}</span>` : ''}</div>
-      <div class="ib-sub">from ${esc(a.tenantEmail || a.account || 'licensee')} · ${esc(a.submittedAt || '')}</div>
+      <div class="ib-sub">from ${esc(a.tenantEmail || a.account || 'licensee')}${a.filedBy ? ` · filed by ${esc(a.filedBy)}` : ''} · ${esc(a.submittedAt || '')}</div>
     </button>`).join('') : '<p class="ab-note">Nothing waiting.</p>';
   $('inbox-list').querySelectorAll('.inbox-card').forEach((b) => {
     b.onclick = () => openAmendment(list.find((a) => a.id === b.dataset.id));
