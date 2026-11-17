@@ -2083,7 +2083,7 @@ function extrasHTML(ch, val, rec) {
     const stateIcon = e.pendingAI ? '<span class="spinner sm"></span>'
       : e.dup ? ic('alert') : e.conf === 'high' && !e.edited ? '✓' : e.edited ? '✎' : ic('alert');
     return `<div class="extra-row ${e.edited ? 'edited' : ''} ${e.dup ? 'dup' : ''}">
-      ${thumb ? `<img class="x-thumb" src="${esc(thumb)}" alt="order ${i + 1}">` : '<span class="x-thumb file">' + ic('file') + '</span>'}
+      ${thumb ? `<img class="x-thumb tap" src="${esc(thumb)}" alt="order ${i + 1}" data-xview="${i}" title="Tap to view the order photo">` : '<span class="x-thumb file">' + ic('file') + '</span>'}
       <span class="x-meta">#${i + 1}${e.orderRef ? ' · ' + esc(e.orderRef) : ''}<em>1 order</em></span>
       <span class="x-state">${stateIcon}</span>
       <input class="x-amt" inputmode="decimal" placeholder="0.00" data-x="${i}"
@@ -2294,6 +2294,7 @@ function wireChannel(card, ch) {
     if (strip) strip.outerHTML = totalStripHTML(ch, val);
     updateSaveBtn();
   });
+  card.querySelectorAll('[data-xview]').forEach((im) => im.onclick = () => openViewer(ch, Number(im.dataset.xview)));
   card.querySelectorAll('[data-xdel]').forEach((b) => b.onclick = () => {
     const val = channelValue(ch);
     const i = Number(b.dataset.xdel);
@@ -2475,23 +2476,33 @@ function runExtraExtraction(ctx, ch, entry) {
 /* ---------- photo viewer: tap-to-correct ---------- */
 /* Candidate numbers are overlaid on the photo; tapping one assigns it to a field
    and logs the correction — this is the data the AI learns from over time. */
-function openViewer(ch) {
+/* x = a pending order's index: its photo opens look-only (zoom, no boxes) —
+   a mark is written to the channel's summary figures, not to the order
+   (field feedback 17 Nov: order photos could not be opened to check them). */
+function openViewer(ch, x) {
   const val = channelValue(ch);
-  const src = val && (val.photoUrl
-    || (val.photoId ? photoUrl(val.photoId) : null));
+  const shot = x === undefined ? val : val && (val.extras || [])[x];
+  const src = shot && (shot.photoUrl
+    || (shot.photoId ? photoUrl(shot.photoId) : null));
   if (!src) return;
-  state.viewer = { ch, pendingBox: null };
+  state.viewer = { ch, pendingBox: null, lookOnly: x !== undefined };
   const img = $('viewer-img');
   img.style.transform = '';
   img.dataset.zoom = '';
   $('viewer-boxes').style.display = '';
-  $('viewer-hint').textContent = 'Drag on the photo to box the correct number, then type it in. Double-tap to zoom.';
+  $('viewer-stage').classList.toggle('look', state.viewer.lookOnly);
+  $('viewer-title').textContent = x === undefined ? 'Draw a box around the correct number' : `Pending order #${x + 1}`;
+  $('viewer-hint').textContent = viewerHint();
   img.onload = placeViewerBoxes;
   img.src = src;
   $('viewer-choice').classList.add('hidden');
   $('viewer-overlay').classList.remove('hidden');
   if (img.complete) placeViewerBoxes();
 }
+const viewerHint = (zoomed) => (state.viewer.lookOnly
+  ? (zoomed ? '🔍 Zoomed — double-tap to zoom out.' : 'Double-tap to zoom.')
+  : (zoomed ? '🔍 Zoomed — double-tap to zoom out and draw a box.'
+    : 'Drag on the photo to box the correct number, then type it in. Double-tap to zoom.'));
 
 /* Geometry of the letterboxed image (object-fit: contain) inside the stage. */
 function imageRect() {
@@ -2505,9 +2516,9 @@ function imageRect() {
 
 /* Show the marks the staff member has drawn on this photo (stored in image-%). */
 function placeViewerBoxes() {
-  const val = channelValue(state.viewer.ch) || {};
+  const marks = state.viewer.lookOnly ? [] : (channelValue(state.viewer.ch) || {}).marks || [];
   const { ox, oy, dw, dh } = imageRect();
-  $('viewer-boxes').innerHTML = (val.marks || []).map((mk) =>
+  $('viewer-boxes').innerHTML = marks.map((mk) =>
     `<div class="vbox mark" style="left:${(ox + mk.box.x / 100 * dw).toFixed(0)}px;top:${(oy + mk.box.y / 100 * dh).toFixed(0)}px;width:${(mk.box.w / 100 * dw).toFixed(0)}px;height:${(mk.box.h / 100 * dh).toFixed(0)}px">
       <small>${mk.kind === 'gmv' ? 'SALES' : 'ORDERS'}</small>${mk.kind === 'gmv' ? money(mk.value) : esc(String(mk.value))}</div>`).join('');
 }
@@ -2525,7 +2536,7 @@ window.addEventListener('resize', () => {
   stage.addEventListener('pointerdown', (e) => {
     if ($('viewer-overlay').classList.contains('hidden')) return;
     if (!$('viewer-choice').classList.contains('hidden')) return;
-    if ($('viewer-img').dataset.zoom === '1') return;   // zoomed = look mode, no drawing
+    if ($('viewer-img').dataset.zoom === '1' || state.viewer.lookOnly) return;   // zoomed or an order photo = look mode, no drawing
     const r = stage.getBoundingClientRect();
     start = { x: e.clientX - r.left, y: e.clientY - r.top };
     band.style.left = `${start.x}px`;
@@ -2585,7 +2596,7 @@ window.addEventListener('resize', () => {
       img.style.transform = '';
       img.dataset.zoom = '';
       $('viewer-boxes').style.display = '';
-      $('viewer-hint').textContent = 'Drag on the photo to box the correct number, then type it in. Double-tap to zoom.';
+      $('viewer-hint').textContent = viewerHint(false);
     } else {
       const r = img.getBoundingClientRect();
       img.style.transformOrigin =
@@ -2594,7 +2605,7 @@ window.addEventListener('resize', () => {
       img.dataset.zoom = '1';
       $('viewer-boxes').style.display = 'none';
       $('rubber-band').classList.add('hidden');
-      $('viewer-hint').textContent = '🔍 Zoomed — double-tap to zoom out and draw a box.';
+      $('viewer-hint').textContent = viewerHint(true);
     }
   });
 })();
