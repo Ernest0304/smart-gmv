@@ -1165,6 +1165,14 @@ button, input, select, .chip, .merchant-card, .staff-btn, .site-btn,
     overflow: hidden; margin-top: 14px;
   }
   #view-review .list-head, #view-billing .list-head { display: grid !important; }
+  /* Review's notes (loading, error, empty day, "No record for …") share the
+     panel with the rows, but only the rows carried the --pad inset: the text
+     sat on the panel's left edge and, on an empty day, on its bottom edge
+     (Ernest's screenshot, 17 Nov). */
+  #view-review .merchant-list > .ab-note, #view-review .merchant-list > .roster-group,
+  #view-review .merchant-list > #rv-retry { margin-left: var(--pad); margin-right: var(--pad); }
+  #view-review .merchant-list > #rv-retry { width: calc(100% - 2 * var(--pad)); }
+  #view-review .merchant-list > :last-child:not(.merchant-card) { margin-bottom: 14px; }
   #view-capture .capture-body { max-width: 620px; margin: 0 auto; }
   #view-capture .save-bar { max-width: 620px; }
   .dinein-entry { border-radius: var(--panel-r); box-shadow: var(--lift-2); }
